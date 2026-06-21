@@ -1,0 +1,11 @@
+{
+  "role": "AI Engineer",
+  "competencies": [
+    {"area": "ML Fundamentals", "weight": 0.2},
+    {"area": "LLM / Prompting / RAG / Agents", "weight": 0.2},
+    {"area": "Data Pipelines & Feature Engineering", "weight": 0.15},
+    {"area": "MLOps / Deployment / Monitoring", "weight": 0.15},
+    {"area": "Python Coding & Math/Stats", "weight": 0.15},
+    {"area": "ML System Design & Behavioral", "weight": 0.15}
+  ]
+}

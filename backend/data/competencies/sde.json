@@ -1,0 +1,11 @@
+{
+  "role": "SDE",
+  "competencies": [
+    {"area": "Data Structures & Algorithms", "weight": 0.25},
+    {"area": "Coding & Implementation Quality", "weight": 0.2},
+    {"area": "System Design", "weight": 0.2},
+    {"area": "Concurrency & CS Fundamentals", "weight": 0.15},
+    {"area": "Debugging & Testing Reasoning", "weight": 0.1},
+    {"area": "Behavioral & Ownership", "weight": 0.1}
+  ]
+}
