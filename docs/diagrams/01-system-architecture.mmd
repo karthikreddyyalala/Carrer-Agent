@@ -1,0 +1,69 @@
+flowchart TB
+    subgraph Client["Frontend - React + TypeScript + Vite"]
+        UI[Interview UI / Dashboard]
+        VID[Avatar video pane]
+        MIC[Mic capture]
+    end
+
+    subgraph Edge["AWS edge"]
+        COG[Cognito - auth]
+        APIGW[API Gateway - WebSocket]
+    end
+
+    subgraph Backend["FastAPI on App Runner"]
+        REST[REST routes]
+        WS[WS session handler]
+        LAM[Lambda - resume parse + jobs]
+    end
+
+    subgraph Runtime["AgentCore Runtime - hosts LangGraph"]
+        IN[Intake Agent]
+        PL[Planner Agent]
+        IV[Interviewer Agent]
+        EV[Evaluator Agent]
+        MEM[Memory Agent]
+    end
+
+    subgraph AI["Reasoning + knowledge"]
+        BR[Claude on Bedrock]
+        KB[Bedrock Knowledge Bases - rubrics + exemplars]
+    end
+
+    subgraph VoiceAvatar["Voice + Avatar"]
+        PIPE[Pipecat orchestrator]
+        STT[Deepgram STT]
+        TTS[ElevenLabs TTS]
+        AV[Tavus avatar]
+    end
+
+    subgraph Data["State + memory + files"]
+        ACMEM[AgentCore Memory - cross-session]
+        AUR[Aurora Serverless v2 + pgvector]
+        S3[S3 - files / audio]
+        SEC[Secrets Manager]
+    end
+
+    UI --> COG
+    UI --> REST
+    MIC --> APIGW
+    APIGW --> WS
+    WS --> PIPE
+    PIPE --> STT
+    STT --> IV
+    PIPE --> TTS
+    TTS --> AV
+    AV --> VID
+    REST --> IN
+    IN --> PL
+    PL --> KB
+    IN --> BR
+    PL --> BR
+    IV --> BR
+    EV --> BR
+    IV --> EV
+    EV --> MEM
+    PL -.reads.-> MEM
+    MEM --> ACMEM
+    REST --> AUR
+    LAM --> S3
+    REST --> SEC

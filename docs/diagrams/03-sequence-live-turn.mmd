@@ -1,0 +1,37 @@
+sequenceDiagram
+    actor C as Candidate
+    participant FE as React Frontend
+    participant GW as API Gateway WebSocket
+    participant PIPE as Pipecat
+    participant STT as Deepgram STT
+    participant IV as Interviewer Agent (Claude)
+    participant EV as Evaluator Agent (Claude)
+    participant TTS as ElevenLabs TTS
+    participant AV as Tavus Avatar
+
+    Note over IV: Holds live state + QuestionPlan
+
+    IV->>TTS: Question text
+    TTS->>AV: Audio stream
+    AV-->>FE: Lip-synced video + audio
+    FE-->>C: Interviewer asks the question
+
+    C->>FE: Speaks answer (mic)
+    FE->>GW: Audio stream
+    GW->>PIPE: Audio
+    PIPE->>STT: Stream
+    STT-->>PIPE: Final transcript
+    PIPE->>IV: Candidate answer transcript
+    IV->>IV: Decide - follow up / push back / move on
+
+    alt Answer vague or unproven
+        IV->>TTS: Probing follow-up (why / how exactly?)
+        TTS->>AV: Audio
+        AV-->>FE: Follow-up delivered
+        Note over C,IV: Loop until concrete or max follow-ups hit
+    else Answer concrete
+        IV->>EV: Final answer + question context
+        EV->>EV: Score rubric + wouldSurviveRealInterview
+        EV-->>IV: AnswerEvaluation (persisted)
+        IV->>IV: Advance to next question
+    end

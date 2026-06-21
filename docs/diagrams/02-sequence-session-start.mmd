@@ -1,0 +1,26 @@
+sequenceDiagram
+    actor C as Candidate
+    participant FE as React Frontend
+    participant API as FastAPI (App Runner)
+    participant IN as Intake Agent
+    participant MEM as Memory Agent
+    participant ACM as AgentCore Memory
+    participant PL as Planner Agent
+    participant KB as Bedrock Knowledge Bases
+
+    C->>FE: Upload resume + job description
+    FE->>API: POST /session/start (Cognito auth)
+    API->>IN: resume + JD text
+    IN->>IN: Parse into IntakeProfile (strict JSON)
+    IN-->>API: IntakeProfile
+    API->>MEM: fetch MemoryProfile(candidateId)
+    MEM->>ACM: read prior weaknesses + trend
+    ACM-->>MEM: MemoryProfile (empty on first session)
+    MEM-->>API: MemoryProfile
+    API->>PL: IntakeProfile + MemoryProfile
+    PL->>KB: retrieve rubrics + exemplars for target competencies
+    KB-->>PL: grounding set
+    PL->>PL: Generate fresh questions, weight weak areas higher
+    PL-->>API: QuestionPlan
+    API-->>FE: sessionId + QuestionPlan
+    FE-->>C: Interview ready

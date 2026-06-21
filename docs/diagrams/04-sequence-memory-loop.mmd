@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant API as FastAPI
+    participant EV as Evaluator Agent
+    participant MEM as Memory Agent
+    participant ACM as AgentCore Memory
+    participant AUR as Aurora (pgvector)
+    participant PL as Planner Agent (next session)
+
+    Note over EV: End of session - every answer scored
+    EV-->>API: AnswerEvaluation[] for the session
+    API->>MEM: Aggregate session evaluations
+    MEM->>MEM: Tally recurring weaknessTags, update trend (custom logic)
+    MEM->>ACM: Write long-term memory (weaknesses, trend)
+    MEM->>AUR: Persist MemoryProfile + session metrics
+
+    Note over PL: NEXT session starts later
+    PL->>ACM: Read cross-session memory(candidateId)
+    ACM-->>PL: Recurring weak areas + semantic recall
+    PL->>AUR: Read improvement trend + strong areas
+    AUR-->>PL: Trend data
+    PL->>PL: Weight next QuestionPlan toward weak areas
+    Note over PL: Session 2 gets harder exactly where Session 1 was weak
