@@ -1,0 +1,19 @@
+[project]
+name = "interviewai-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "anthropic[bedrock]>=0.40",
+  "langgraph>=0.2",
+  "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2", "pytest-cov>=5.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests", "evals"]
+addopts = "-q"
