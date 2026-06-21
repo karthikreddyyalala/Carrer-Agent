@@ -1,0 +1,7 @@
+{
+  "role_key": "sde",
+  "resume_text": "Maya Okonkwo. 4 years backend engineer at a fintech. Built a payments reconciliation service in Python/FastAPI on AWS Lambda. Owns Postgres schema. No Kafka or streaming experience. Mentored 2 juniors.",
+  "jd_text": "Senior SDE. Must have: distributed systems, event streaming with Kafka, high-throughput services, on-call ownership. Nice to have: Go.",
+  "expect_gap_substrings": ["kafka"],
+  "expect_min_questions": 4
+}
