@@ -4,7 +4,7 @@ import re
 _FENCE = re.compile(r"```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```", re.DOTALL)
 
 
-def extract_json(text: str):
+def extract_json(text: str) -> dict | list:
     """Pull the first JSON object/array out of model output, fenced or raw."""
     match = _FENCE.search(text)
     candidate = match.group(1) if match else text.strip()

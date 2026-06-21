@@ -1,6 +1,9 @@
-from typing import TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 from pydantic import BaseModel
 from llm.json_utils import extract_json
+
+if TYPE_CHECKING:
+    from anthropic import AnthropicBedrock
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -12,7 +15,7 @@ class LLMClient:
     AnthropicBedrock client so importing this module never needs AWS creds.
     """
 
-    def __init__(self, client=None, region: str = "us-east-1"):
+    def __init__(self, client: "AnthropicBedrock | Any | None" = None, region: str = "us-east-1"):
         self._client = client
         self._region = region
 

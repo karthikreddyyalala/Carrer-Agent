@@ -39,7 +39,7 @@ class QuestionPlan(_Base):
 class AnswerEvaluation(_Base):
     question_id: str
     transcript: str
-    rubric_scores: dict[str, int]
+    rubric_scores: dict[str, float]
     weakness_tags: list[str]
     follow_up_count: int
     would_survive_real_interview: bool
