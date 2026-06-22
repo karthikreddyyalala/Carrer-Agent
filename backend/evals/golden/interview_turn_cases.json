@@ -1,0 +1,54 @@
+[
+  {
+    "case": "vague_behavioral_gets_followup",
+    "question": {
+      "id": "q-beh-vague", "type": "behavioral",
+      "prompt": "Tell me about a time you led a project under a tight deadline.",
+      "targetDifficulty": 3, "weightedFromWeakness": false
+    },
+    "candidate_answer": "Yeah we had a tight deadline and I made sure the team stayed focused and we got it done on time.",
+    "follow_up_count": 0,
+    "is_last_question": false,
+    "expect_action": "follow_up",
+    "expect_would_survive": null
+  },
+  {
+    "case": "concrete_behavioral_advances",
+    "question": {
+      "id": "q-beh-concrete", "type": "behavioral",
+      "prompt": "Tell me about a time you led a project under a tight deadline.",
+      "targetDifficulty": 3, "weightedFromWeakness": false
+    },
+    "candidate_answer": "At Fintech Corp in 2023 I led a 4-person team to ship a KYC verification module in 3 weeks instead of the planned 6. The critical blocker was a slow data-normalisation service. I paired directly with the engineer owning it for 2 days and we cut its p99 latency from 4 seconds to 180ms. We shipped on day 19 with zero P1 bugs and customer onboarding time dropped from 48 hours to 4 hours.",
+    "follow_up_count": 0,
+    "is_last_question": false,
+    "expect_action": "advance",
+    "expect_would_survive": null
+  },
+  {
+    "case": "vague_technical_evaluated_as_fail",
+    "question": {
+      "id": "q-tech-vague", "type": "technical",
+      "prompt": "Explain how Floyd's cycle-detection algorithm works.",
+      "targetDifficulty": 2, "weightedFromWeakness": false
+    },
+    "candidate_answer": "You basically keep two pointers and move them and if they meet you know there's a cycle.",
+    "follow_up_count": 2,
+    "is_last_question": false,
+    "expect_action": "advance",
+    "expect_would_survive": false
+  },
+  {
+    "case": "strong_technical_evaluated_as_pass",
+    "question": {
+      "id": "q-tech-strong", "type": "technical",
+      "prompt": "Explain how Floyd's cycle-detection algorithm works.",
+      "targetDifficulty": 2, "weightedFromWeakness": false
+    },
+    "candidate_answer": "Floyd's algorithm uses two pointers, slow and fast, starting at head. Slow advances one node per step, fast advances two. If there is a cycle, fast will eventually lap slow and they will point to the same node — this is the cycle-detection invariant. If fast reaches null the list is acyclic. Time complexity O(n), space O(1) since we use no extra storage. An edge case is an empty list or a list of one node with no self-pointer, both of which terminate immediately when fast.next is null.",
+    "follow_up_count": 0,
+    "is_last_question": false,
+    "expect_action": "advance",
+    "expect_would_survive": true
+  }
+]
