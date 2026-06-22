@@ -1,0 +1,23 @@
+from pathlib import Path
+from models.contracts import AnswerEvaluation, PlannedQuestion
+
+_PROMPT = (Path(__file__).resolve().parent.parent / "prompts" / "evaluator.md").read_text()
+
+
+class EvaluatorAgent:
+    def __init__(self, llm, model: str):
+        self._llm = llm
+        self._model = model
+
+    def run(self, *, question: PlannedQuestion, transcript: str, follow_up_count: int) -> AnswerEvaluation:
+        user = (
+            f"Question ID: {question.id}\n"
+            f"Question Type: {question.type}\n"
+            f"Difficulty: {question.target_difficulty}\n"
+            f"Question: {question.prompt}\n\n"
+            f"Candidate Answer:\n{transcript}\n\n"
+            f"Follow-up count: {follow_up_count}"
+        )
+        return self._llm.structured(
+            model=self._model, system=_PROMPT, user=user, schema=AnswerEvaluation,
+        )
