@@ -62,3 +62,9 @@ class MemoryProfile(_Base):
     recurring_weaknesses: list[RecurringWeakness]
     improvement_trend: list[TrendPoint]
     strong_areas: list[str]
+
+
+class InterviewDecision(_Base):
+    action: Literal["follow_up", "advance", "complete"]
+    follow_up_prompt: str | None = None
+    current_question_id: str

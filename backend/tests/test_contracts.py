@@ -1,6 +1,6 @@
 from models.contracts import (
     IntakeProfile, ProjectHighlight, QuestionPlan, PlannedQuestion,
-    AnswerEvaluation, MemoryProfile,
+    AnswerEvaluation, MemoryProfile, InterviewDecision,
 )
 
 
@@ -37,3 +37,24 @@ def test_answer_evaluation_requires_survival_fields():
     )
     assert ev.would_survive_real_interview is False
     assert ev.survival_reasoning
+
+
+def test_interview_decision_follow_up():
+    d = InterviewDecision(
+        action="follow_up",
+        followUpPrompt="You said you optimized the query — what was the before/after latency?",
+        currentQuestionId="q1",
+    )
+    assert d.action == "follow_up"
+    assert d.follow_up_prompt is not None
+    assert d.current_question_id == "q1"
+
+
+def test_interview_decision_advance_has_no_prompt():
+    d = InterviewDecision(
+        action="advance",
+        followUpPrompt=None,
+        currentQuestionId="q2",
+    )
+    assert d.action == "advance"
+    assert d.follow_up_prompt is None
