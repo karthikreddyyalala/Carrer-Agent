@@ -1,0 +1,58 @@
+[
+  {
+    "case": "first_session_builds_weakness_profile",
+    "candidate_id": "eval-cand-1",
+    "session_date": "2026-06-22",
+    "existing_memory": {
+      "candidateId": "eval-cand-1",
+      "recurringWeaknesses": [],
+      "improvementTrend": [],
+      "strongAreas": []
+    },
+    "evaluations": [
+      {
+        "questionId": "q1", "transcript": "vague answer",
+        "rubricScores": {"correctness": 2.0, "depth": 1.0},
+        "weaknessTags": ["shallow-depth", "no-edge-cases"],
+        "followUpCount": 2, "wouldSurviveRealInterview": false,
+        "survivalReasoning": "No depth or edge cases."
+      },
+      {
+        "questionId": "q2", "transcript": "also vague",
+        "rubricScores": {"correctness": 3.0, "depth": 1.5},
+        "weaknessTags": ["shallow-depth"],
+        "followUpCount": 1, "wouldSurviveRealInterview": false,
+        "survivalReasoning": "Shallow depth again."
+      }
+    ],
+    "expect_top_weakness": "shallow-depth",
+    "expect_top_weakness_frequency": 2,
+    "expect_trend_length": 1
+  },
+  {
+    "case": "second_session_increments_existing_weaknesses",
+    "candidate_id": "eval-cand-2",
+    "session_date": "2026-06-22",
+    "existing_memory": {
+      "candidateId": "eval-cand-2",
+      "recurringWeaknesses": [
+        {"tag": "no-edge-cases", "frequency": 2, "lastSeen": "2026-06-15"},
+        {"tag": "shallow-depth", "frequency": 1, "lastSeen": "2026-06-15"}
+      ],
+      "improvementTrend": [{"sessionDate": "2026-06-15", "avgScore": 2.5}],
+      "strongAreas": []
+    },
+    "evaluations": [
+      {
+        "questionId": "q1", "transcript": "still missing edge cases",
+        "rubricScores": {"correctness": 4.0, "depth": 3.0, "edge_cases": 1.0},
+        "weaknessTags": ["no-edge-cases"],
+        "followUpCount": 1, "wouldSurviveRealInterview": false,
+        "survivalReasoning": "Edge cases still absent."
+      }
+    ],
+    "expect_top_weakness": "no-edge-cases",
+    "expect_top_weakness_frequency": 3,
+    "expect_trend_length": 2
+  }
+]

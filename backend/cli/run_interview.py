@@ -2,15 +2,38 @@
 
 Usage (from backend/ with venv active):
     python -m cli.run_interview --resume path/to/resume.txt --jd path/to/jd.txt --role sde
+
+Memory is saved to /tmp/interviewai_memory.json after each session and reloaded
+at the start of the next one, so the Planner automatically targets your weak areas.
 """
 import argparse
+import json
 import uuid
+from datetime import date
+from pathlib import Path
 
 from config.settings import Settings
 from llm.client import LLMClient
 from models.contracts import MemoryProfile
 from graph.session_start import build_session_start_graph
 from graph.interview_turn import build_interview_turn_graph, InterviewTurnState
+from graph.session_end import build_session_end_graph
+
+_MEMORY_FILE = Path("/tmp/interviewai_memory.json")
+
+
+def _load_memory(candidate_id: str) -> MemoryProfile:
+    if _MEMORY_FILE.exists():
+        data = json.loads(_MEMORY_FILE.read_text())
+        if data.get("candidateId") == candidate_id:
+            return MemoryProfile.model_validate(data)
+    return MemoryProfile(
+        candidateId=candidate_id, recurringWeaknesses=[], improvementTrend=[], strongAreas=[],
+    )
+
+
+def _save_memory(memory: MemoryProfile) -> None:
+    _MEMORY_FILE.write_text(memory.model_dump_json(by_alias=True, indent=2))
 
 
 def main() -> None:
@@ -18,10 +41,16 @@ def main() -> None:
     parser.add_argument("--resume", required=True)
     parser.add_argument("--jd", required=True)
     parser.add_argument("--role", default="sde")
+    parser.add_argument("--candidate-id", default="local-dev")
     args = parser.parse_args()
 
     settings = Settings()
     llm = LLMClient(region=settings.aws_region)
+
+    existing_memory = _load_memory(args.candidate_id)
+    if existing_memory.recurring_weaknesses:
+        top_weak = [w.tag for w in existing_memory.recurring_weaknesses[:3]]
+        print(f"\nMemory loaded — targeting your weak areas: {', '.join(top_weak)}")
 
     session_graph = build_session_start_graph(
         llm=llm, intake_model=settings.intake_model, planner_model=settings.planner_model,
@@ -31,9 +60,7 @@ def main() -> None:
         "resume_text": open(args.resume).read(),
         "jd_text": open(args.jd).read(),
         "role_key": args.role,
-        "memory": MemoryProfile(
-            candidateId="local-dev", recurringWeaknesses=[], improvementTrend=[], strongAreas=[],
-        ),
+        "memory": existing_memory,
     })
     plan = session_result["plan"]
 
@@ -89,6 +116,23 @@ def main() -> None:
                 all_evals = result.get("evaluations") or []
                 passed = sum(1 for e in all_evals if e.would_survive_real_interview)
                 print(f"Results: {passed}/{len(all_evals)} answers would survive a real interview.")
+
+                # Persist memory for next session
+                if all_evals:
+                    print("\nAggregating session results into memory...")
+                    end_graph = build_session_end_graph(llm=llm, memory_model=settings.planner_model)
+                    end_result = end_graph.invoke({
+                        "candidate_id": args.candidate_id,
+                        "session_date": date.today().isoformat(),
+                        "evaluations": all_evals,
+                        "existing_memory": existing_memory,
+                    })
+                    updated = end_result["updated_memory"]
+                    _save_memory(updated)
+                    if updated.recurring_weaknesses:
+                        top = [w.tag for w in updated.recurring_weaknesses[:3]]
+                        print(f"Weak areas to focus on next session: {', '.join(top)}")
+
                 print(f"{'='*60}\n")
                 break
 
