@@ -5,3 +5,7 @@ node_modules/
 __pycache__/
 *.pyc
 .venv/
+dist/
+*.egg-info/
+.vite/
+*.tsbuildinfo
