@@ -12,7 +12,10 @@ import type {
 } from "@/types/contracts";
 import { mockEngine } from "./mockEngine";
 
-const USE_MOCK = true;
+// Defaults to the local mock so the product demos without AWS. Set
+// VITE_USE_MOCK=false (with the FastAPI backend running) to hit the real
+// five-agent pipeline through the Vite /api proxy.
+const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
 
 const latency = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -31,6 +34,7 @@ export const api = {
     resumeText: string;
     jdText: string;
     role: string;
+    priorMemory: MemoryProfile | null;
   }): Promise<StartSessionResult> {
     if (USE_MOCK) {
       await latency(1400);

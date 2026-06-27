@@ -75,7 +75,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   start: async ({ resumeText, jdText, role }) => {
     set({ status: "starting", role, messages: [], evaluations: [], updatedMemory: null });
     const prior = loadStoredMemory();
-    const { profile, plan } = await api.startSession({ resumeText, jdText, role });
+    const { profile, plan } = await api.startSession({ resumeText, jdText, role, priorMemory: prior });
     const first = plan.questions[0];
     set({
       status: "live",
