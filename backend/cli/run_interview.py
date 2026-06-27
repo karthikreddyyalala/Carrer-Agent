@@ -70,8 +70,8 @@ def main() -> None:
 
     turn_graph = build_interview_turn_graph(
         llm=llm,
-        interviewer_model=settings.planner_model,
-        evaluator_model=settings.planner_model,
+        interviewer_model=settings.interviewer_model,
+        evaluator_model=settings.evaluator_model,
     )
 
     state: InterviewTurnState = {
@@ -120,7 +120,7 @@ def main() -> None:
                 # Persist memory for next session
                 if all_evals:
                     print("\nAggregating session results into memory...")
-                    end_graph = build_session_end_graph(llm=llm, memory_model=settings.planner_model)
+                    end_graph = build_session_end_graph(llm=llm, memory_model=settings.memory_model)
                     end_result = end_graph.invoke({
                         "candidate_id": args.candidate_id,
                         "session_date": date.today().isoformat(),

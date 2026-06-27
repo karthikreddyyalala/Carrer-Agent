@@ -70,9 +70,9 @@ def build_session_router(*, llm, settings: Settings) -> APIRouter:
         intake_model=settings.intake_model,
         planner_model=settings.planner_model,
     )
-    interviewer = InterviewerAgent(llm=llm, model=settings.planner_model)
-    evaluator = EvaluatorAgent(llm=llm, model=settings.planner_model)
-    memory_agent = MemoryAgent(llm=llm, model=settings.planner_model)
+    interviewer = InterviewerAgent(llm=llm, model=settings.interviewer_model)
+    evaluator = EvaluatorAgent(llm=llm, model=settings.evaluator_model)
+    memory_agent = MemoryAgent(llm=llm, model=settings.memory_model)
 
     @router.get("/health")
     def health() -> dict[str, str]:
