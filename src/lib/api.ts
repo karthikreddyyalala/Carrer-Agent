@@ -17,6 +17,12 @@ import { mockEngine } from "./mockEngine";
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
 const MOCK_MEMORY_KEY = "crucible.memory.v1";
 
+// In dev the Vite proxy forwards /api -> localhost:8000, so the base is "".
+// In production (static S3/CloudFront) there's no proxy, so point at the
+// Lambda Function URL via VITE_API_BASE at build time.
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+const apiUrl = (path: string) => `${API_BASE}${path}`;
+
 const latency = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function readMockMemory(candidateId: string): MemoryProfile | null {
@@ -57,7 +63,7 @@ export const api = {
     if (USE_MOCK) {
       return readMockMemory(candidateId) ?? emptyMemory(candidateId);
     }
-    const res = await fetch(`/api/memory/${encodeURIComponent(candidateId)}`);
+    const res = await fetch(apiUrl(`/api/memory/${encodeURIComponent(candidateId)}`));
     return res.json();
   },
 
@@ -71,7 +77,7 @@ export const api = {
       await latency(1400);
       return mockEngine.buildSession(input.role);
     }
-    const res = await fetch("/api/session/start", {
+    const res = await fetch(apiUrl("/api/session/start"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -89,7 +95,7 @@ export const api = {
       await latency(1100);
       return mockEngine.decide(input.question, input.answer, input.followUpCount, input.isLast);
     }
-    const res = await fetch("/api/session/turn", {
+    const res = await fetch(apiUrl("/api/session/turn"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -110,7 +116,7 @@ export const api = {
       writeMockMemory(updated);
       return updated;
     }
-    const res = await fetch("/api/session/finalize", {
+    const res = await fetch(apiUrl("/api/session/finalize"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),

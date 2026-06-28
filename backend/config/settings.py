@@ -25,4 +25,12 @@ class Settings(BaseSettings):
     persistence: str = "memory"
     memory_table: str = "crucible-memory"
 
+    # Comma-separated allowed browser origins for CORS. Localhost for dev; add
+    # the deployed frontend origin (CloudFront domain) via INTERVIEWAI_CORS_ORIGINS.
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
     run_llm_evals: bool = False
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
