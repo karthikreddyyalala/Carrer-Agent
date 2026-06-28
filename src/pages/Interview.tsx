@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, PaperPlaneTilt } from "@phosphor-icons/react";
+import { ArrowUp, PaperPlaneTilt, ArrowCounterClockwise } from "@phosphor-icons/react";
 import { TopBar } from "@/components/TopBar";
 import { TypeChip, DifficultyMeter, WeightedTag } from "@/components/QuestionMeta";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -14,6 +14,8 @@ export function Interview() {
   const currentIdx = useSessionStore((s) => s.currentIdx);
   const followUpCount = useSessionStore((s) => s.followUpCount);
   const submitAnswer = useSessionStore((s) => s.submitAnswer);
+  const justRestored = useSessionStore((s) => s.justRestored);
+  const clearRestored = useSessionStore((s) => s.clearRestored);
 
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -23,6 +25,13 @@ export function Interview() {
     if (status === "idle") navigate("/setup");
     if (status === "complete") navigate("/results");
   }, [status, navigate]);
+
+  // Acknowledge a resumed session, then drop the flag after a moment.
+  useEffect(() => {
+    if (!justRestored) return;
+    const t = setTimeout(() => clearRestored(), 5000);
+    return () => clearTimeout(t);
+  }, [justRestored, clearRestored]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -75,6 +84,25 @@ export function Interview() {
           </div>
         </div>
       </div>
+
+      {/* resume notice */}
+      <AnimatePresence>
+        {justRestored && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="border-b border-survive/25 bg-survive/[0.06]"
+          >
+            <div className="mx-auto flex max-w-[820px] items-center gap-2.5 px-5 py-3 sm:px-8">
+              <ArrowCounterClockwise size={15} weight="bold" className="text-survive" />
+              <span className="font-mono text-[11px] tracking-wide text-survive">
+                SESSION RESTORED — picked up right where you left off.
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* transcript */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
