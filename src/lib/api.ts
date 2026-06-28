@@ -1,6 +1,8 @@
-// Single seam between UI and backend. Today it resolves against the local
-// mockEngine; flip USE_MOCK to false once backend/routes/ is live and the
-// fetch branches will take over. Signatures match the agent contracts.
+// Single seam between UI and backend. Defaults to the local mockEngine so the
+// product demos without AWS; set VITE_USE_MOCK=false (with the FastAPI backend
+// running) to hit the real five-agent pipeline through the Vite /api proxy.
+// In real mode the backend is the source of truth for cross-session memory
+// (DynamoDB); in mock mode localStorage stands in for it.
 
 import type {
   AnswerEvaluation,
@@ -12,12 +14,33 @@ import type {
 } from "@/types/contracts";
 import { mockEngine } from "./mockEngine";
 
-// Defaults to the local mock so the product demos without AWS. Set
-// VITE_USE_MOCK=false (with the FastAPI backend running) to hit the real
-// five-agent pipeline through the Vite /api proxy.
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
+const MOCK_MEMORY_KEY = "crucible.memory.v1";
 
 const latency = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function readMockMemory(candidateId: string): MemoryProfile | null {
+  try {
+    const raw = localStorage.getItem(MOCK_MEMORY_KEY);
+    if (!raw) return null;
+    const m = JSON.parse(raw) as MemoryProfile;
+    return m.candidateId === candidateId ? m : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeMockMemory(profile: MemoryProfile): void {
+  try {
+    localStorage.setItem(MOCK_MEMORY_KEY, JSON.stringify(profile));
+  } catch {
+    /* storage unavailable — non-fatal */
+  }
+}
+
+function emptyMemory(candidateId: string): MemoryProfile {
+  return { candidateId, recurringWeaknesses: [], improvementTrend: [], strongAreas: [] };
+}
 
 export interface StartSessionResult {
   profile: IntakeProfile;
@@ -30,11 +53,19 @@ export interface TurnResult {
 }
 
 export const api = {
+  async getMemory(candidateId: string): Promise<MemoryProfile> {
+    if (USE_MOCK) {
+      return readMockMemory(candidateId) ?? emptyMemory(candidateId);
+    }
+    const res = await fetch(`/api/memory/${encodeURIComponent(candidateId)}`);
+    return res.json();
+  },
+
   async startSession(input: {
     resumeText: string;
     jdText: string;
     role: string;
-    priorMemory: MemoryProfile | null;
+    candidateId: string;
   }): Promise<StartSessionResult> {
     if (USE_MOCK) {
       await latency(1400);
@@ -67,13 +98,17 @@ export const api = {
   },
 
   async finalizeSession(input: {
+    candidateId: string;
     evaluations: AnswerEvaluation[];
-    priorMemory: MemoryProfile | null;
   }): Promise<MemoryProfile> {
-    const today = new Date().toISOString().slice(0, 10);
     if (USE_MOCK) {
       await latency(900);
-      return mockEngine.aggregate(input.evaluations, today, input.priorMemory);
+      const today = new Date().toISOString().slice(0, 10);
+      const prior = readMockMemory(input.candidateId);
+      const updated = mockEngine.aggregate(input.evaluations, today, prior);
+      updated.candidateId = input.candidateId;
+      writeMockMemory(updated);
+      return updated;
     }
     const res = await fetch("/api/session/finalize", {
       method: "POST",

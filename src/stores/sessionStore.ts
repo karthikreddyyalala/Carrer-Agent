@@ -7,8 +7,7 @@ import type {
   QuestionPlan,
 } from "@/types/contracts";
 import { api } from "@/lib/api";
-
-const MEMORY_KEY = "crucible.memory.v1";
+import { getCandidateId } from "@/lib/identity";
 
 export type Speaker = "interviewer" | "candidate";
 export type MessageKind = "question" | "answer" | "follow_up";
@@ -36,7 +35,7 @@ interface SessionState {
   priorMemory: MemoryProfile | null;
   updatedMemory: MemoryProfile | null;
 
-  loadMemory: () => void;
+  loadMemory: () => Promise<void>;
   start: (input: { resumeText: string; jdText: string; role: string }) => Promise<void>;
   submitAnswer: (text: string) => Promise<void>;
   reset: () => void;
@@ -49,13 +48,8 @@ function currentQuestion(plan: QuestionPlan | null, idx: number): PlannedQuestio
   return plan?.questions[idx] ?? null;
 }
 
-function loadStoredMemory(): MemoryProfile | null {
-  try {
-    const raw = localStorage.getItem(MEMORY_KEY);
-    return raw ? (JSON.parse(raw) as MemoryProfile) : null;
-  } catch {
-    return null;
-  }
+function hasMemory(m: MemoryProfile | null): boolean {
+  return !!m && m.recurringWeaknesses.length > 0;
 }
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -70,18 +64,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   priorMemory: null,
   updatedMemory: null,
 
-  loadMemory: () => set({ priorMemory: loadStoredMemory() }),
+  loadMemory: async () => {
+    const memory = await api.getMemory(getCandidateId());
+    set({ priorMemory: hasMemory(memory) ? memory : null });
+  },
 
   start: async ({ resumeText, jdText, role }) => {
     set({ status: "starting", role, messages: [], evaluations: [], updatedMemory: null });
-    const prior = loadStoredMemory();
-    const { profile, plan } = await api.startSession({ resumeText, jdText, role, priorMemory: prior });
+    const candidateId = getCandidateId();
+    const prior = await api.getMemory(candidateId);
+    const { profile, plan } = await api.startSession({ resumeText, jdText, role, candidateId });
     const first = plan.questions[0];
     set({
       status: "live",
       profile,
       plan,
-      priorMemory: prior,
+      priorMemory: hasMemory(prior) ? prior : null,
       currentIdx: 0,
       followUpCount: 0,
       messages: [
@@ -140,15 +138,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const evals = evaluation ? [...state.evaluations, evaluation] : state.evaluations;
 
     if (decision.action === "complete") {
+      // Backend persists the aggregated memory (DynamoDB in real mode,
+      // localStorage in mock mode) — it's the source of truth now.
       const updated = await api.finalizeSession({
+        candidateId: getCandidateId(),
         evaluations: evals,
-        priorMemory: state.priorMemory,
       });
-      try {
-        localStorage.setItem(MEMORY_KEY, JSON.stringify(updated));
-      } catch {
-        /* storage may be unavailable; non-fatal */
-      }
       set({ status: "complete", evaluations: evals, updatedMemory: updated });
       return;
     }
