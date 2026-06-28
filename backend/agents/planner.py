@@ -11,9 +11,12 @@ class PlannerAgent:
         self._model = model
 
     def run(self, *, session_id: str, profile: IntakeProfile,
-            memory: MemoryProfile, competency_map: CompetencyMap) -> QuestionPlan:
+            memory: MemoryProfile, competency_map: CompetencyMap,
+            mode: str = "full", level: str = "mid") -> QuestionPlan:
         user = (
-            f"sessionId: {session_id}\n\n"
+            f"sessionId: {session_id}\n"
+            f"mode: {mode}\n"
+            f"level: {level}\n\n"
             f"IntakeProfile:\n{profile.model_dump_json(by_alias=True, indent=2)}\n\n"
             f"MemoryProfile:\n{memory.model_dump_json(by_alias=True, indent=2)}\n\n"
             f"CompetencyMap:\n{competency_map.model_dump_json(by_alias=True, indent=2)}"

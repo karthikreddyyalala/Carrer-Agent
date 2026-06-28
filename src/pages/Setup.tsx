@@ -5,6 +5,7 @@ import { ArrowRight, Sparkle, Brain } from "@phosphor-icons/react";
 import { TopBar } from "@/components/TopBar";
 import { MagneticButton } from "@/components/MagneticButton";
 import { useSessionStore } from "@/stores/sessionStore";
+import type { InterviewLevel, InterviewMode } from "@/types/contracts";
 
 const SAMPLE_RESUME = `Maya Okonkwo — Backend Engineer
 4 years experience. Built a realtime pricing engine in Go that cut p99 latency from 940ms to 180ms under burst load. Led active-active failover for checkout across 3 AWS regions using Kubernetes and Envoy. Strong in distributed systems, Postgres, Kafka. Mentored 2 junior engineers.`;
@@ -17,6 +18,19 @@ const ROLES = [
   { key: "ai_engineer", label: "AI Engineer", hint: "LLMs, evals, RAG, production ML" },
 ];
 
+const MODES: { key: InterviewMode; label: string }[] = [
+  { key: "full", label: "Full Mock" },
+  { key: "behavioral", label: "Behavioral" },
+  { key: "technical", label: "Technical" },
+  { key: "system_design", label: "System Design" },
+];
+
+const LEVELS: { key: InterviewLevel; label: string }[] = [
+  { key: "junior", label: "Junior" },
+  { key: "mid", label: "Mid" },
+  { key: "senior", label: "Senior" },
+];
+
 export function Setup() {
   const navigate = useNavigate();
   const start = useSessionStore((s) => s.start);
@@ -25,6 +39,8 @@ export function Setup() {
   const loadMemory = useSessionStore((s) => s.loadMemory);
 
   const [role, setRole] = useState("sde");
+  const [mode, setMode] = useState<InterviewMode>("full");
+  const [level, setLevel] = useState<InterviewLevel>("mid");
   const [resume, setResume] = useState("");
   const [jd, setJd] = useState("");
 
@@ -37,7 +53,7 @@ export function Setup() {
   const canStart = resume.trim().length > 30 && jd.trim().length > 30 && !starting;
 
   const handleStart = async () => {
-    await start({ resumeText: resume, jdText: jd, role });
+    await start({ resumeText: resume, jdText: jd, role, mode, level });
     navigate("/interview");
   };
 
@@ -109,6 +125,62 @@ export function Setup() {
                 );
               })}
             </div>
+          </div>
+
+          {/* mode */}
+          <div className="mt-7">
+            <label className="mb-2.5 block font-mono text-[11px] tracking-[0.16em] text-fog">
+              INTERVIEW MODE
+            </label>
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              {MODES.map((m) => {
+                const active = mode === m.key;
+                return (
+                  <button
+                    key={m.key}
+                    onClick={() => setMode(m.key)}
+                    className={`rounded-xl border px-3 py-2.5 text-center font-display text-[15px] font-semibold tracking-tight tactile transition-colors ${
+                      active
+                        ? "border-accent bg-accent/10 text-chalk"
+                        : "border-line bg-ink text-mist hover:border-line-bright"
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-fog">
+              {mode === "full"
+                ? "Mixed, adaptive — opens behavioral, then technical & system design."
+                : "Focused track — every question stays in this area."}
+            </p>
+          </div>
+
+          {/* level */}
+          <div className="mt-7">
+            <label className="mb-2.5 block font-mono text-[11px] tracking-[0.16em] text-fog">
+              LEVEL
+            </label>
+            <div className="inline-flex rounded-xl border border-line bg-ink p-1">
+              {LEVELS.map((l) => {
+                const active = level === l.key;
+                return (
+                  <button
+                    key={l.key}
+                    onClick={() => setLevel(l.key)}
+                    className={`rounded-lg px-5 py-2 font-display text-sm font-semibold tracking-tight tactile transition-colors ${
+                      active ? "bg-accent text-void" : "text-mist hover:text-chalk"
+                    }`}
+                  >
+                    {l.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-fog">
+              Controls difficulty and how much each question asks — Junior is smaller and guided.
+            </p>
           </div>
 
           {/* resume */}

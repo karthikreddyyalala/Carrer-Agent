@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter
@@ -30,6 +31,8 @@ class StartSessionRequest(_Base):
     jd_text: str
     role: str
     candidate_id: str = "local-dev"
+    mode: Literal["full", "behavioral", "technical", "system_design"] = "full"
+    level: Literal["junior", "mid", "senior"] = "mid"
 
 
 class StartSessionResponse(_Base):
@@ -94,6 +97,8 @@ def build_session_router(*, llm, settings: Settings, store: MemoryStore) -> APIR
                 "resume_text": req.resume_text,
                 "jd_text": req.jd_text,
                 "role_key": req.role,
+                "mode": req.mode,
+                "level": req.level,
                 "memory": prior,
             }
         )

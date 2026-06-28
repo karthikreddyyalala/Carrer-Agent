@@ -19,6 +19,9 @@ export interface IntakeProfile {
 export type QuestionType = "behavioral" | "technical" | "system_design";
 export type Difficulty = 1 | 2 | 3 | 4 | 5;
 
+export type InterviewMode = "full" | "behavioral" | "technical" | "system_design";
+export type InterviewLevel = "junior" | "mid" | "senior";
+
 export interface PlannedQuestion {
   id: string;
   type: QuestionType;

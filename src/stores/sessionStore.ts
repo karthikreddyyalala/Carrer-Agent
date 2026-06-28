@@ -3,6 +3,8 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import type {
   AnswerEvaluation,
   IntakeProfile,
+  InterviewLevel,
+  InterviewMode,
   MemoryProfile,
   PlannedQuestion,
   QuestionPlan,
@@ -38,7 +40,13 @@ interface SessionState {
   justRestored: boolean;
 
   loadMemory: () => Promise<void>;
-  start: (input: { resumeText: string; jdText: string; role: string }) => Promise<void>;
+  start: (input: {
+    resumeText: string;
+    jdText: string;
+    role: string;
+    mode: InterviewMode;
+    level: InterviewLevel;
+  }) => Promise<void>;
   submitAnswer: (text: string) => Promise<void>;
   clearRestored: () => void;
   reset: () => void;
@@ -79,11 +87,18 @@ export const useSessionStore = create<SessionState>()(
         set({ priorMemory: hasMemory(memory) ? memory : null });
       },
 
-      start: async ({ resumeText, jdText, role }) => {
+      start: async ({ resumeText, jdText, role, mode, level }) => {
         set({ status: "starting", role, messages: [], evaluations: [], updatedMemory: null });
         const candidateId = getCandidateId();
         const prior = await api.getMemory(candidateId);
-        const { profile, plan } = await api.startSession({ resumeText, jdText, role, candidateId });
+        const { profile, plan } = await api.startSession({
+          resumeText,
+          jdText,
+          role,
+          candidateId,
+          mode,
+          level,
+        });
         const first = plan.questions[0];
         set({
           status: "live",

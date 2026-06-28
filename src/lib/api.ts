@@ -8,6 +8,8 @@ import type {
   AnswerEvaluation,
   IntakeProfile,
   InterviewDecision,
+  InterviewLevel,
+  InterviewMode,
   MemoryProfile,
   PlannedQuestion,
   QuestionPlan,
@@ -72,10 +74,12 @@ export const api = {
     jdText: string;
     role: string;
     candidateId: string;
+    mode: InterviewMode;
+    level: InterviewLevel;
   }): Promise<StartSessionResult> {
     if (USE_MOCK) {
       await latency(1400);
-      return mockEngine.buildSession(input.role);
+      return mockEngine.buildSession(input.role, input.mode);
     }
     const res = await fetch(apiUrl("/api/session/start"), {
       method: "POST",

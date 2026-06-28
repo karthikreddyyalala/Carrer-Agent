@@ -225,13 +225,18 @@ function scoreAnswer(
 }
 
 export const mockEngine = {
-  buildSession(role: string): { profile: IntakeProfile; plan: QuestionPlan } {
+  buildSession(
+    role: string,
+    mode: "full" | "behavioral" | "technical" | "system_design" = "full"
+  ): { profile: IntakeProfile; plan: QuestionPlan } {
     const key = QUESTION_BANK[role] ? role : "sde";
     const intake = INTAKE_BY_ROLE[key];
     const profile: IntakeProfile = { ...intake, targetRole: ROLE_LABEL[key] };
+    const pool = mode === "full" ? QUESTION_BANK[key] : QUESTION_BANK[key].filter((q) => q.type === mode);
+    const source = pool.length > 0 ? pool : QUESTION_BANK[key];
     const plan: QuestionPlan = {
       sessionId: `sess-${Date.now()}`,
-      questions: QUESTION_BANK[key].map((q, i) => ({
+      questions: source.map((q, i) => ({
         ...q,
         id: `q${i}`,
         weightedFromWeakness: i === 1,

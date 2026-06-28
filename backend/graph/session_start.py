@@ -11,6 +11,8 @@ class SessionStartState(TypedDict, total=False):
     resume_text: str
     jd_text: str
     role_key: str
+    mode: str
+    level: str
     memory: MemoryProfile
     profile: IntakeProfile
     plan: QuestionPlan
@@ -30,6 +32,8 @@ def build_session_start_graph(*, llm, intake_model: str, planner_model: str):
             profile=state["profile"],
             memory=state["memory"],
             competency_map=load_competency_map(state["role_key"]),
+            mode=state.get("mode", "full"),
+            level=state.get("level", "mid"),
         )
         return {"plan": plan}
 

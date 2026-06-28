@@ -42,3 +42,23 @@ def test_planner_returns_plan_with_session_id():
     assert plan.session_id == "sess-1"
     assert plan.questions[0].weighted_from_weakness is True
     assert "vague-impact" in llm.last["user"]
+
+
+def test_planner_forwards_mode_and_level():
+    payload = {
+        "sessionId": "s",
+        "questions": [
+            {"id": "q1", "type": "technical", "prompt": "p",
+             "targetDifficulty": 5, "weightedFromWeakness": False},
+        ],
+    }
+    llm = _FakeLLM(payload)
+    agent = PlannerAgent(llm=llm, model="planner-model")
+    mem = MemoryProfile(candidateId="c1", recurringWeaknesses=[], improvementTrend=[], strongAreas=[])
+    agent.run(
+        session_id="s", profile=_profile(), memory=mem,
+        competency_map=load_competency_map("sde"),
+        mode="technical", level="senior",
+    )
+    assert "mode: technical" in llm.last["user"]
+    assert "level: senior" in llm.last["user"]
