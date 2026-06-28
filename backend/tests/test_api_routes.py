@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app import create_app
+from store.in_memory import InMemoryStore
 
 
 class _FakeLLM:
@@ -76,8 +77,8 @@ _QUESTION_BODY = {
 }
 
 
-def _client(payloads: dict) -> TestClient:
-    return TestClient(create_app(llm=_FakeLLM(payloads)))
+def _client(payloads: dict, store: InMemoryStore | None = None) -> TestClient:
+    return TestClient(create_app(llm=_FakeLLM(payloads), store=store or InMemoryStore()))
 
 
 def test_start_session_returns_profile_and_plan():
@@ -147,3 +148,72 @@ def test_healthcheck():
     res = client.get("/api/health")
     assert res.status_code == 200
     assert res.json()["status"] == "ok"
+
+
+def test_finalize_persists_memory_to_store():
+    store = InMemoryStore()
+    client = _client({"MemoryProfile": {**_MEMORY, "candidateId": "cand-xyz"}}, store=store)
+    res = client.post(
+        "/api/session/finalize",
+        json={"candidateId": "cand-xyz", "evaluations": [_EVAL]},
+    )
+    assert res.status_code == 200
+    # the aggregated profile is now durable in the store
+    saved = store.get_memory("cand-xyz")
+    assert saved is not None
+    assert saved.recurring_weaknesses[0].tag == "no-edge-cases"
+
+
+def test_get_memory_returns_persisted_profile():
+    store = InMemoryStore()
+    client = _client({"MemoryProfile": {**_MEMORY, "candidateId": "cand-abc"}}, store=store)
+    # nothing yet -> empty profile, not 404
+    empty = client.get("/api/memory/cand-abc")
+    assert empty.status_code == 200
+    assert empty.json()["candidateId"] == "cand-abc"
+    assert empty.json()["recurringWeaknesses"] == []
+
+    # after finalize it returns the saved profile
+    client.post("/api/session/finalize", json={"candidateId": "cand-abc", "evaluations": [_EVAL]})
+    loaded = client.get("/api/memory/cand-abc")
+    assert loaded.status_code == 200
+    assert loaded.json()["recurringWeaknesses"][0]["tag"] == "no-edge-cases"
+
+
+def test_start_loads_prior_memory_from_store():
+    """Planner must receive the candidate's persisted weaknesses, proving the
+    cross-session loop is server-side, not browser-side."""
+    store = InMemoryStore()
+    captured: dict = {}
+
+    class _CapturingLLM(_FakeLLM):
+        def structured(self, *, model, system, user, schema, max_tokens=2000):
+            if schema.__name__ == "QuestionPlan":
+                captured["planner_user"] = user
+            return super().structured(
+                model=model, system=system, user=user, schema=schema, max_tokens=max_tokens
+            )
+
+    # seed a prior memory for this candidate
+    from models.contracts import MemoryProfile
+
+    store.put_memory(
+        MemoryProfile.model_validate(
+            {
+                "candidateId": "returning",
+                "recurringWeaknesses": [{"tag": "no-edge-cases", "frequency": 3, "lastSeen": "2026-06-01"}],
+                "improvementTrend": [],
+                "strongAreas": [],
+            }
+        )
+    )
+
+    app = create_app(llm=_CapturingLLM({"IntakeProfile": _INTAKE, "QuestionPlan": _PLAN}), store=store)
+    client = TestClient(app)
+    res = client.post(
+        "/api/session/start",
+        json={"resumeText": "r", "jdText": "j", "role": "sde", "candidateId": "returning"},
+    )
+    assert res.status_code == 200
+    # the planner prompt carried the persisted weakness
+    assert "no-edge-cases" in captured["planner_user"]

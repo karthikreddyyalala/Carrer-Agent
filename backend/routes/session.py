@@ -18,6 +18,7 @@ from agents.evaluator import EvaluatorAgent
 from agents.interviewer import InterviewerAgent
 from agents.memory import MemoryAgent
 from graph.session_start import build_session_start_graph
+from store.base import MemoryStore
 
 
 class _Base(BaseModel):
@@ -28,7 +29,7 @@ class StartSessionRequest(_Base):
     resume_text: str
     jd_text: str
     role: str
-    prior_memory: MemoryProfile | None = None
+    candidate_id: str = "local-dev"
 
 
 class StartSessionResponse(_Base):
@@ -49,20 +50,20 @@ class TurnResponse(_Base):
 
 
 class FinalizeRequest(_Base):
+    candidate_id: str = "local-dev"
     evaluations: list[AnswerEvaluation]
-    prior_memory: MemoryProfile | None = None
 
 
-def _empty_memory() -> MemoryProfile:
+def _empty_memory(candidate_id: str) -> MemoryProfile:
     return MemoryProfile(
-        candidate_id="local-dev",
+        candidate_id=candidate_id,
         recurring_weaknesses=[],
         improvement_trend=[],
         strong_areas=[],
     )
 
 
-def build_session_router(*, llm, settings: Settings) -> APIRouter:
+def build_session_router(*, llm, settings: Settings, store: MemoryStore) -> APIRouter:
     router = APIRouter(prefix="/api")
 
     start_graph = build_session_start_graph(
@@ -78,15 +79,22 @@ def build_session_router(*, llm, settings: Settings) -> APIRouter:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @router.get("/memory/{candidate_id}")
+    def get_memory(candidate_id: str) -> MemoryProfile:
+        # Always return a profile (empty if none yet) so the client can render
+        # weak-spot UI without special-casing 404s.
+        return store.get_memory(candidate_id) or _empty_memory(candidate_id)
+
     @router.post("/session/start")
     def start(req: StartSessionRequest) -> StartSessionResponse:
+        prior = store.get_memory(req.candidate_id) or _empty_memory(req.candidate_id)
         result = start_graph.invoke(
             {
                 "session_id": str(uuid4()),
                 "resume_text": req.resume_text,
                 "jd_text": req.jd_text,
                 "role_key": req.role,
-                "memory": req.prior_memory or _empty_memory(),
+                "memory": prior,
             }
         )
         return StartSessionResponse(profile=result["profile"], plan=result["plan"])
@@ -111,12 +119,14 @@ def build_session_router(*, llm, settings: Settings) -> APIRouter:
 
     @router.post("/session/finalize")
     def finalize(req: FinalizeRequest) -> MemoryProfile:
-        existing = req.prior_memory or _empty_memory()
-        return memory_agent.run(
-            candidate_id=existing.candidate_id,
+        existing = store.get_memory(req.candidate_id) or _empty_memory(req.candidate_id)
+        updated = memory_agent.run(
+            candidate_id=req.candidate_id,
             session_date=date.today().isoformat(),
             evaluations=req.evaluations,
             existing_memory=existing,
         )
+        store.put_memory(updated)
+        return updated
 
     return router

@@ -20,4 +20,9 @@ class Settings(BaseSettings):
     evaluator_model: str = sonnet_model
     memory_model: str = haiku_model
 
+    # Persistence. "memory" keeps everything in-process (tests, local dev with
+    # no AWS tables). "dynamodb" persists MemoryProfile across sessions/devices.
+    persistence: str = "memory"
+    memory_table: str = "crucible-memory"
+
     run_llm_evals: bool = False
