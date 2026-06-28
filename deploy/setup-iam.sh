@@ -19,7 +19,7 @@ USER="jam"
 ROLE="crucible-lambda-role"
 TABLE="crucible-memory"
 
-echo "==> 1/3  Deploy permissions for user ${USER} (Lambda + S3)"
+echo "==> 1/4  Deploy permissions for user ${USER} (Lambda + S3 + Budget)"
 aws iam put-user-policy --user-name "$USER" --policy-name crucible-deploy --policy-document "{
   \"Version\": \"2012-10-17\",
   \"Statement\": [
@@ -44,11 +44,17 @@ aws iam put-user-policy --user-name "$USER" --policy-name crucible-deploy --poli
         \"s3:GetBucketLocation\", \"s3:DeleteObject\", \"s3:PutBucketWebsite\"
       ],
       \"Resource\": [\"arn:aws:s3:::crucible-*\", \"arn:aws:s3:::crucible-*/*\"]
+    },
+    {
+      \"Sid\": \"BudgetGuard\",
+      \"Effect\": \"Allow\",
+      \"Action\": [\"budgets:CreateBudget\", \"budgets:ViewBudget\", \"budgets:ModifyBudget\"],
+      \"Resource\": \"arn:aws:budgets::${ACCOUNT}:budget/crucible-monthly\"
     }
   ]
 }"
 
-echo "==> 2/3  CloudFront permissions for user ${USER}"
+echo "==> 2/4  CloudFront permissions for user ${USER}"
 aws iam put-user-policy --user-name "$USER" --policy-name crucible-cloudfront --policy-document '{
   "Version": "2012-10-17",
   "Statement": [
@@ -66,7 +72,7 @@ aws iam put-user-policy --user-name "$USER" --policy-name crucible-cloudfront --
   ]
 }'
 
-echo "==> 3/3  Lambda execution role ${ROLE}"
+echo "==> 3/4  Lambda execution role ${ROLE}"
 if aws iam get-role --role-name "$ROLE" >/dev/null 2>&1; then
   echo "    role already exists, skipping create"
 else
@@ -100,6 +106,19 @@ aws iam put-role-policy --role-name "$ROLE" --policy-name crucible-runtime --pol
     }
   ]
 }"
+
+echo "==> 4/4  Monthly cost alert (\$10 cap, emails you at 80%)"
+ALERT_EMAIL="${CRUCIBLE_ALERT_EMAIL:-karthikreddyy386@gmail.com}"
+sleep 8  # let the budget IAM grant propagate
+if aws budgets describe-budget --account-id "$ACCOUNT" --budget-name crucible-monthly >/dev/null 2>&1; then
+  echo "    budget already exists, skipping"
+else
+  aws budgets create-budget --account-id "$ACCOUNT" \
+    --budget '{"BudgetName":"crucible-monthly","BudgetLimit":{"Amount":"10","Unit":"USD"},"TimeUnit":"MONTHLY","BudgetType":"COST"}' \
+    --notifications-with-subscribers "[{\"Notification\":{\"NotificationType\":\"ACTUAL\",\"ComparisonOperator\":\"GREATER_THAN\",\"Threshold\":80,\"ThresholdType\":\"PERCENTAGE\"},\"Subscribers\":[{\"SubscriptionType\":\"EMAIL\",\"Address\":\"${ALERT_EMAIL}\"}]}]" \
+    && echo "    budget alert created (notifies ${ALERT_EMAIL})" \
+    || echo "    NOTE: budget creation failed (non-fatal) — you can add it later in the Billing console"
+fi
 
 echo ""
 echo "Done. IAM is ready. Tell the assistant to continue the deploy."
