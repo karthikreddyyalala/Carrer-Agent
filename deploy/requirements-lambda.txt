@@ -1,0 +1,10 @@
+# Runtime-only deps for the Lambda package. boto3/botocore are excluded on
+# purpose — the Lambda Python runtime already provides them. uvicorn is not
+# needed (Mangum drives the app), keeping the package small.
+fastapi>=0.115
+mangum>=0.18
+anthropic>=0.40
+langgraph>=0.2
+pydantic>=2.7
+pydantic-settings>=2.3
+python-dotenv>=1.0
