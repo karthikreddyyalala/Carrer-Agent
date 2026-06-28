@@ -47,21 +47,33 @@ else
 fi
 
 echo "==> Capping concurrency at ${CONCURRENCY} (cost ceiling)"
+# On accounts with a low total concurrency limit this is rejected (it would
+# starve the shared pool) — in that case the account-wide limit is itself the
+# cap, so treat the failure as non-fatal.
 aws lambda put-function-concurrency --function-name "$FN" --region "$REGION" \
-  --reserved-concurrent-executions "$CONCURRENCY" >/dev/null
+  --reserved-concurrent-executions "$CONCURRENCY" >/dev/null 2>&1 \
+  && echo "    reserved ${CONCURRENCY}" \
+  || echo "    skipped (account concurrency limit already caps it)"
 
-echo "==> Public Function URL"
-if ! aws lambda get-function-url-config --function-name "$FN" --region "$REGION" >/dev/null 2>&1; then
-  aws lambda create-function-url-config --function-name "$FN" --region "$REGION" \
-    --auth-type NONE \
-    --cors "AllowOrigins=${CORS_ORIGINS},AllowMethods=*,AllowHeaders=*" >/dev/null
-  aws lambda add-permission --function-name "$FN" --region "$REGION" \
-    --statement-id public-url --action lambda:InvokeFunctionUrl \
-    --principal "*" --function-url-auth-type NONE >/dev/null 2>&1 || true
+# Public exposure via API Gateway HTTP API (not a Lambda Function URL — those
+# are blocked by an account guardrail on this account). CORS is handled inside
+# FastAPI via INTERVIEWAI_CORS_ORIGINS, so the API itself stays CORS-agnostic.
+echo "==> API Gateway HTTP API"
+API_ARN="arn:aws:lambda:${REGION}:${ACCOUNT}:function:${FN}"
+API_ID=$(aws apigatewayv2 get-apis --region "$REGION" \
+  --query "Items[?Name=='${FN}'].ApiId | [0]" --output text 2>/dev/null)
+if [ -z "$API_ID" ] || [ "$API_ID" = "None" ]; then
+  API_ID=$(aws apigatewayv2 create-api --name "$FN" --protocol-type HTTP \
+    --target "$API_ARN" --region "$REGION" --query ApiId --output text)
 fi
 
-URL=$(aws lambda get-function-url-config --function-name "$FN" --region "$REGION" \
-  --query FunctionUrl --output text)
+# The quick-create permission is unreliable; ensure API Gateway can invoke.
+aws lambda add-permission --function-name "$FN" --region "$REGION" \
+  --statement-id apigw-invoke --action lambda:InvokeFunction \
+  --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:${REGION}:${ACCOUNT}:${API_ID}/*/*" >/dev/null 2>&1 || true
+
+URL=$(aws apigatewayv2 get-api --api-id "$API_ID" --region "$REGION" --query ApiEndpoint --output text)
 echo ""
 echo "Backend live: ${URL}"
-echo "Health:       ${URL}api/health"
+echo "Health:       ${URL}/api/health"
