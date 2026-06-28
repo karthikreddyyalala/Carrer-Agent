@@ -1,9 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, PaperPlaneTilt, ArrowCounterClockwise } from "@phosphor-icons/react";
+import {
+  ArrowUp,
+  PaperPlaneTilt,
+  ArrowCounterClockwise,
+  Microphone,
+  Waveform,
+  SpeakerHigh,
+  SpeakerSlash,
+} from "@phosphor-icons/react";
 import { TopBar } from "@/components/TopBar";
 import { TypeChip, DifficultyMeter, WeightedTag } from "@/components/QuestionMeta";
+import { InterviewerAvatar, type AvatarState } from "@/components/InterviewerAvatar";
+import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useSessionStore } from "@/stores/sessionStore";
 
 export function Interview() {
@@ -19,6 +30,29 @@ export function Interview() {
 
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Voice: TTS for the interviewer, STT for the candidate. Both degrade
+  // gracefully when the browser lacks support.
+  const tts = useSpeechSynthesis();
+  const stt = useSpeechRecognition();
+  const voiceCapable = tts.supported || stt.supported;
+  const [voiceOn, setVoiceOn] = useState(false);
+  const lastSpokenId = useRef<string | null>(null);
+
+  // Speak each new interviewer message aloud when voice is on.
+  useEffect(() => {
+    if (!voiceOn || !tts.supported) return;
+    const last = messages[messages.length - 1];
+    if (!last || last.speaker !== "interviewer") return;
+    if (lastSpokenId.current === last.id) return;
+    lastSpokenId.current = last.id;
+    tts.speak(last.text);
+  }, [messages, voiceOn, tts]);
+
+  // While dictating, mirror the live transcript into the draft.
+  useEffect(() => {
+    if (stt.listening) setDraft(stt.transcript);
+  }, [stt.listening, stt.transcript]);
 
   // No active session (e.g. refreshed straight here) — bounce to setup.
   useEffect(() => {
@@ -44,8 +78,33 @@ export function Interview() {
   const total = plan.questions.length;
   const progressPct = ((currentIdx + (status === "complete" ? 1 : 0)) / total) * 100;
 
+  const avatarState: AvatarState = tts.speaking
+    ? "speaking"
+    : stt.listening
+    ? "listening"
+    : "idle";
+
+  const toggleVoice = () => {
+    const next = !voiceOn;
+    setVoiceOn(next);
+    if (!next) {
+      tts.cancel();
+      if (stt.listening) stt.stop();
+    }
+  };
+
+  const toggleMic = () => {
+    if (stt.listening) {
+      stt.stop();
+    } else {
+      tts.cancel();
+      stt.start();
+    }
+  };
+
   const send = () => {
     if (!draft.trim() || thinking) return;
+    if (stt.listening) stt.stop();
     submitAnswer(draft.trim());
     setDraft("");
   };
@@ -55,6 +114,20 @@ export function Interview() {
       <TopBar
         right={
           <div className="flex items-center gap-4">
+            {voiceCapable && (
+              <button
+                onClick={toggleVoice}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[10px] tracking-[0.14em] tactile transition-colors ${
+                  voiceOn
+                    ? "border-accent/50 bg-accent/10 text-accent"
+                    : "border-line-bright text-fog hover:text-chalk"
+                }`}
+                title={voiceOn ? "Turn voice off" : "Turn voice on"}
+              >
+                {voiceOn ? <SpeakerHigh size={13} weight="fill" /> : <SpeakerSlash size={13} />}
+                VOICE
+              </button>
+            )}
             <span className="font-mono text-[11px] tracking-wide text-fog">
               Q{currentIdx + 1} / {total}
             </span>
@@ -71,14 +144,24 @@ export function Interview() {
 
       {/* current question header */}
       <div className="border-b border-line bg-ink/50">
-        <div className="mx-auto max-w-[820px] px-5 py-5 sm:px-8">
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="mx-auto flex max-w-[820px] items-center gap-4 px-5 py-5 sm:px-8">
+          {voiceOn && <InterviewerAvatar state={avatarState} size={72} />}
+          <div className="flex flex-1 flex-wrap items-center gap-3">
             <TypeChip type={question.type} />
             <DifficultyMeter value={question.targetDifficulty} />
             {question.weightedFromWeakness && <WeightedTag />}
             {followUpCount > 0 && (
               <span className="font-mono text-[10px] tracking-[0.16em] text-accent">
                 FOLLOW-UP {followUpCount}/2
+              </span>
+            )}
+            {voiceOn && (
+              <span className="w-full font-mono text-[10px] tracking-[0.14em] text-fog">
+                {tts.speaking
+                  ? "INTERVIEWER SPEAKING…"
+                  : stt.listening
+                  ? "LISTENING — SPEAK YOUR ANSWER"
+                  : "VOICE READY"}
               </span>
             )}
           </div>
@@ -150,6 +233,30 @@ export function Interview() {
       <div className="border-t border-line bg-void/80 backdrop-blur-xl">
         <div className="mx-auto max-w-[820px] px-5 py-4 sm:px-8">
           <div className="flex items-end gap-3 rounded-2xl border border-line bg-ink p-2.5 focus-within:border-line-bright">
+            {stt.supported && (
+              <button
+                onClick={toggleMic}
+                disabled={thinking}
+                className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl tactile transition-colors disabled:opacity-30 ${
+                  stt.listening
+                    ? "bg-survive/15 text-survive"
+                    : "border border-line-bright text-fog hover:text-chalk"
+                }`}
+                aria-label={stt.listening ? "Stop dictation" : "Speak your answer"}
+                title={stt.listening ? "Stop dictation" : "Speak your answer"}
+              >
+                {stt.listening ? (
+                  <motion.span
+                    animate={{ scale: [1, 0.8, 1] }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
+                  >
+                    <Waveform size={18} weight="fill" />
+                  </motion.span>
+                ) : (
+                  <Microphone size={18} weight="bold" />
+                )}
+              </button>
+            )}
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -158,7 +265,13 @@ export function Interview() {
               }}
               disabled={thinking}
               rows={2}
-              placeholder={thinking ? "Interviewer is thinking…" : "Type your answer — be specific."}
+              placeholder={
+                stt.listening
+                  ? "Listening…"
+                  : thinking
+                  ? "Interviewer is thinking…"
+                  : "Type or speak your answer — be specific."
+              }
               className="max-h-40 min-h-[44px] flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] leading-relaxed text-chalk placeholder:text-fog focus:outline-none disabled:opacity-50"
             />
             <button
@@ -171,7 +284,7 @@ export function Interview() {
             </button>
           </div>
           <p className="mt-2 px-1 font-mono text-[10px] tracking-wide text-fog">
-            ⌘/CTRL + ENTER TO SEND · VAGUE ANSWERS WILL GET PROBED
+            {stt.supported ? "MIC TO SPEAK · " : ""}⌘/CTRL + ENTER TO SEND · VAGUE ANSWERS WILL GET PROBED
           </p>
         </div>
       </div>
