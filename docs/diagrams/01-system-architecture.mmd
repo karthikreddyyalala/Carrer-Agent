@@ -1,69 +1,68 @@
+%% Crucible — DEPLOYED architecture (as of 2026-06-28).
+%% Solid = built & live.  Dotted = planned / optional upgrade.
 flowchart TB
-    subgraph Client["Frontend - React + TypeScript + Vite"]
-        UI[Interview UI / Dashboard]
-        VID[Avatar video pane]
-        MIC[Mic capture]
+    subgraph Client["Frontend — React + TS + Vite (SPA)"]
+        UI[Interview UI / Setup / Results]
+        VOICE[Browser voice: Web Speech STT + TTS]
+        AVA[Stylized interviewer avatar]
     end
 
-    subgraph Edge["AWS edge"]
-        COG[Cognito - auth]
-        APIGW[API Gateway - WebSocket]
+    subgraph CDN["AWS edge — HTTPS"]
+        CF[CloudFront distribution]
+        S3F[S3 — static site bucket]
     end
 
-    subgraph Backend["FastAPI on App Runner"]
-        REST[REST routes]
-        WS[WS session handler]
-        LAM[Lambda - resume parse + jobs]
+    subgraph API["Public API"]
+        APIGW[API Gateway — HTTP API]
     end
 
-    subgraph Runtime["AgentCore Runtime - hosts LangGraph"]
-        IN[Intake Agent]
-        PL[Planner Agent]
-        IV[Interviewer Agent]
-        EV[Evaluator Agent]
-        MEM[Memory Agent]
+    subgraph Compute["AWS Lambda — FastAPI via Mangum (python3.12)"]
+        ROUTES[REST routes: start / turn / finalize / memory]
+        subgraph Graph["LangGraph — 5-agent pipeline"]
+            IN[Intake Agent]
+            PL[Planner Agent]
+            IV[Interviewer Agent]
+            EV[Evaluator Agent]
+            MEM[Memory Agent]
+        end
     end
 
-    subgraph AI["Reasoning + knowledge"]
-        BR[Claude on Bedrock]
-        KB[Bedrock Knowledge Bases - rubrics + exemplars]
+    subgraph AI["Reasoning — Amazon Bedrock (us-west-2)"]
+        HAIKU[Claude Haiku 4.5 — intake + memory]
+        SONNET[Claude Sonnet 4.6 — planner + interviewer + evaluator]
     end
 
-    subgraph VoiceAvatar["Voice + Avatar"]
-        PIPE[Pipecat orchestrator]
-        STT[Deepgram STT]
-        TTS[ElevenLabs TTS]
-        AV[Tavus avatar]
+    subgraph Data["Persistence"]
+        DDB[(DynamoDB — crucible-memory)]
+        LSTORE[Browser localStorage — active session autosave]
     end
 
-    subgraph Data["State + memory + files"]
-        ACMEM[AgentCore Memory - cross-session]
-        AUR[Aurora Serverless v2 + pgvector]
-        S3[S3 - files / audio]
-        SEC[Secrets Manager]
+    subgraph Guards["Cost + safety"]
+        BUDGET[AWS Budget alert — $10/mo]
+        CONC[Lambda concurrency cap — account limit 10]
     end
 
-    UI --> COG
-    UI --> REST
-    MIC --> APIGW
-    APIGW --> WS
-    WS --> PIPE
-    PIPE --> STT
-    STT --> IV
-    PIPE --> TTS
-    TTS --> AV
-    AV --> VID
-    REST --> IN
+    %% planned / optional
+    PROV[Premium voice/avatar: Deepgram · ElevenLabs · Tavus/D-ID]
+    AUTH[Auth: Cognito]
+
+    UI --> CF
+    CF --> S3F
+    UI -->|fetch /api| APIGW
+    APIGW --> ROUTES
+    ROUTES --> IN
     IN --> PL
-    PL --> KB
-    IN --> BR
-    PL --> BR
-    IV --> BR
-    EV --> BR
+    PL -. reads .-> MEM
     IV --> EV
     EV --> MEM
-    PL -.reads.-> MEM
-    MEM --> ACMEM
-    REST --> AUR
-    LAM --> S3
-    REST --> SEC
+    IN --> HAIKU
+    MEM --> HAIKU
+    PL --> SONNET
+    IV --> SONNET
+    EV --> SONNET
+    MEM --> DDB
+    ROUTES --> DDB
+    UI --> LSTORE
+    VOICE -. upgrade .-> PROV
+    AVA -. upgrade .-> PROV
+    UI -. planned .-> AUTH
