@@ -376,9 +376,17 @@ function Footer() {
     <footer className="border-t border-line py-10">
       <div className="mx-auto flex max-w-[1200px] flex-col items-center justify-between gap-4 px-5 sm:flex-row sm:px-8">
         <Wordmark />
-        <p className="font-mono text-[11px] tracking-wide text-fog">
-          FIVE AGENTS · ONE MEMORY · NO MERCY
-        </p>
+        <div className="flex items-center gap-6">
+          <Link
+            to="/privacy"
+            className="font-mono text-[11px] tracking-wide text-fog transition-colors hover:text-chalk"
+          >
+            PRIVACY & TERMS
+          </Link>
+          <p className="font-mono text-[11px] tracking-wide text-fog">
+            FIVE AGENTS · ONE MEMORY · NO MERCY
+          </p>
+        </div>
       </div>
     </footer>
   );

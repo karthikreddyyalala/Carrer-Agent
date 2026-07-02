@@ -4,6 +4,7 @@ import { Landing } from "./pages/Landing";
 import { Setup } from "./pages/Setup";
 import { Interview } from "./pages/Interview";
 import { Results } from "./pages/Results";
+import { Privacy } from "./pages/Privacy";
 
 export function App() {
   return (
@@ -14,6 +15,7 @@ export function App() {
         <Route path="/setup" element={<Setup />} />
         <Route path="/interview" element={<Interview />} />
         <Route path="/results" element={<Results />} />
+        <Route path="/privacy" element={<Privacy />} />
       </Routes>
     </>
   );

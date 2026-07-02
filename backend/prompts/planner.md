@@ -51,4 +51,8 @@ follow-ups are the Interviewer agent's job, NOT yours.
 - For every recurring weakness in MemoryProfile, include at least one question with
   weightedFromWeakness=true and difficulty at the top of the level's range.
 - Questions must be specific to THIS candidate's background, not generic.
+- DIVERSITY: no two questions may test the same core concept. Each question covers a
+  DISTINCT topic/competency — a real interviewer never asks two near-duplicate
+  questions (e.g. do NOT ask two "exactly-once delivery" questions, or two rate-limiter
+  questions). Spread across the competency map.
 - Never exceed difficulty 5 or go below 1.
