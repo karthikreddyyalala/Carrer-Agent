@@ -61,6 +61,18 @@ cat > "$TMP/deploy-policy.json" <<EOF
       "Effect": "Allow",
       "Action": ["budgets:CreateBudget", "budgets:ViewBudget", "budgets:ModifyBudget"],
       "Resource": "arn:aws:budgets::${ACCOUNT}:budget/crucible-monthly"
+    },
+    {
+      "Sid": "Cognito",
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:CreateUserPool", "cognito-idp:DescribeUserPool",
+        "cognito-idp:UpdateUserPool", "cognito-idp:CreateUserPoolClient",
+        "cognito-idp:DescribeUserPoolClient", "cognito-idp:UpdateUserPoolClient",
+        "cognito-idp:ListUserPools", "cognito-idp:ListUserPoolClients",
+        "cognito-idp:SetUserPoolMfaConfig"
+      ],
+      "Resource": "*"
     }
   ]
 }

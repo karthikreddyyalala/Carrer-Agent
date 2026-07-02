@@ -1,7 +1,16 @@
+import pytest
 from fastapi.testclient import TestClient
 
+import auth
 from app import create_app
 from store.in_memory import InMemoryStore
+
+
+@pytest.fixture(autouse=True)
+def _clear_auth_cache():
+    auth._settings.cache_clear()
+    yield
+    auth._settings.cache_clear()
 
 
 class _FakeLLM:
@@ -148,6 +157,27 @@ def test_healthcheck():
     res = client.get("/api/health")
     assert res.status_code == 200
     assert res.json()["status"] == "ok"
+
+
+def test_auth_required_rejects_missing_token(monkeypatch):
+    monkeypatch.setenv("INTERVIEWAI_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("INTERVIEWAI_COGNITO_USER_POOL_ID", "us-west-2_test")
+    monkeypatch.setenv("INTERVIEWAI_COGNITO_CLIENT_ID", "testclient")
+    auth._settings.cache_clear()
+    client = _client({"IntakeProfile": _INTAKE, "QuestionPlan": _PLAN})
+    res = client.post("/api/session/start",
+                      json={"resumeText": "r", "jdText": "j", "role": "sde"})
+    assert res.status_code == 401
+
+
+def test_health_public_even_when_auth_required(monkeypatch):
+    monkeypatch.setenv("INTERVIEWAI_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("INTERVIEWAI_COGNITO_USER_POOL_ID", "us-west-2_test")
+    monkeypatch.setenv("INTERVIEWAI_COGNITO_CLIENT_ID", "testclient")
+    auth._settings.cache_clear()
+    client = _client({})
+    res = client.get("/api/health")
+    assert res.status_code == 200
 
 
 def test_finalize_persists_memory_to_store():

@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     # the deployed frontend origin (CloudFront domain) via INTERVIEWAI_CORS_ORIGINS.
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # Auth. When auth_required is true, every /api call (except /health) must
+    # carry a valid Cognito ID token; the candidate id is taken from its `sub`
+    # claim, not the request. Off by default so tests/local dev stay anonymous.
+    auth_required: bool = False
+    cognito_region: str = "us-west-2"
+    cognito_user_pool_id: str = ""
+    cognito_client_id: str = ""
+
     run_llm_evals: bool = False
 
     @property

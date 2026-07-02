@@ -2,9 +2,11 @@ from datetime import date
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
+
+from auth import current_sub
 
 from config.settings import Settings
 from models.contracts import (
@@ -83,14 +85,16 @@ def build_session_router(*, llm, settings: Settings, store: MemoryStore) -> APIR
         return {"status": "ok"}
 
     @router.get("/memory/{candidate_id}")
-    def get_memory(candidate_id: str) -> MemoryProfile:
-        # Always return a profile (empty if none yet) so the client can render
-        # weak-spot UI without special-casing 404s.
-        return store.get_memory(candidate_id) or _empty_memory(candidate_id)
+    def get_memory(candidate_id: str, sub: str | None = Depends(current_sub)) -> MemoryProfile:
+        # When authenticated, the token's sub wins over any client-supplied id,
+        # so a user can only ever read their own memory.
+        cid = sub or candidate_id
+        return store.get_memory(cid) or _empty_memory(cid)
 
     @router.post("/session/start")
-    def start(req: StartSessionRequest) -> StartSessionResponse:
-        prior = store.get_memory(req.candidate_id) or _empty_memory(req.candidate_id)
+    def start(req: StartSessionRequest, sub: str | None = Depends(current_sub)) -> StartSessionResponse:
+        cid = sub or req.candidate_id
+        prior = store.get_memory(cid) or _empty_memory(cid)
         result = start_graph.invoke(
             {
                 "session_id": str(uuid4()),
@@ -105,7 +109,7 @@ def build_session_router(*, llm, settings: Settings, store: MemoryStore) -> APIR
         return StartSessionResponse(profile=result["profile"], plan=result["plan"])
 
     @router.post("/session/turn")
-    def turn(req: TurnRequest) -> TurnResponse:
+    def turn(req: TurnRequest, _sub: str | None = Depends(current_sub)) -> TurnResponse:
         decision = interviewer.run_turn(
             question=req.question,
             candidate_answer=req.answer,
@@ -123,10 +127,11 @@ def build_session_router(*, llm, settings: Settings, store: MemoryStore) -> APIR
         return TurnResponse(decision=decision, evaluation=evaluation)
 
     @router.post("/session/finalize")
-    def finalize(req: FinalizeRequest) -> MemoryProfile:
-        existing = store.get_memory(req.candidate_id) or _empty_memory(req.candidate_id)
+    def finalize(req: FinalizeRequest, sub: str | None = Depends(current_sub)) -> MemoryProfile:
+        cid = sub or req.candidate_id
+        existing = store.get_memory(cid) or _empty_memory(cid)
         updated = memory_agent.run(
-            candidate_id=req.candidate_id,
+            candidate_id=cid,
             session_date=date.today().isoformat(),
             evaluations=req.evaluations,
             existing_memory=existing,
