@@ -1,6 +1,8 @@
 import { Routes, Route } from "react-router-dom";
 import { Atmosphere } from "./components/Atmosphere";
+import { RequireAuth } from "./components/RequireAuth";
 import { Landing } from "./pages/Landing";
+import { Login } from "./pages/Login";
 import { Setup } from "./pages/Setup";
 import { Interview } from "./pages/Interview";
 import { Results } from "./pages/Results";
@@ -12,10 +14,32 @@ export function App() {
       <Atmosphere />
       <Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="/setup" element={<Setup />} />
-        <Route path="/interview" element={<Interview />} />
-        <Route path="/results" element={<Results />} />
+        <Route path="/login" element={<Login />} />
         <Route path="/privacy" element={<Privacy />} />
+        <Route
+          path="/setup"
+          element={
+            <RequireAuth>
+              <Setup />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/interview"
+          element={
+            <RequireAuth>
+              <Interview />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/results"
+          element={
+            <RequireAuth>
+              <Results />
+            </RequireAuth>
+          }
+        />
       </Routes>
     </>
   );

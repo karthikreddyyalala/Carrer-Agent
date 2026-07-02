@@ -15,9 +15,20 @@ import type {
   QuestionPlan,
 } from "@/types/contracts";
 import { mockEngine } from "./mockEngine";
+import { authApi } from "./auth";
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
 const MOCK_MEMORY_KEY = "crucible.memory.v1";
+
+// Attaches the Cognito ID token so the backend can verify the user and derive
+// their candidate id from the token's sub.
+async function authHeaders(json = true): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {};
+  if (json) headers["Content-Type"] = "application/json";
+  const session = await authApi.getSession();
+  if (session) headers["Authorization"] = `Bearer ${session.idToken}`;
+  return headers;
+}
 
 // In dev the Vite proxy forwards /api -> localhost:8000, so the base is "".
 // In production (static S3/CloudFront) there's no proxy, so point at the
@@ -65,7 +76,9 @@ export const api = {
     if (USE_MOCK) {
       return readMockMemory(candidateId) ?? emptyMemory(candidateId);
     }
-    const res = await fetch(apiUrl(`/api/memory/${encodeURIComponent(candidateId)}`));
+    const res = await fetch(apiUrl(`/api/memory/${encodeURIComponent(candidateId)}`), {
+      headers: await authHeaders(false),
+    });
     return res.json();
   },
 
@@ -83,7 +96,7 @@ export const api = {
     }
     const res = await fetch(apiUrl("/api/session/start"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await authHeaders(),
       body: JSON.stringify(input),
     });
     return res.json();
@@ -101,7 +114,7 @@ export const api = {
     }
     const res = await fetch(apiUrl("/api/session/turn"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await authHeaders(),
       body: JSON.stringify(input),
     });
     return res.json();
@@ -122,7 +135,7 @@ export const api = {
     }
     const res = await fetch(apiUrl("/api/session/finalize"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await authHeaders(),
       body: JSON.stringify(input),
     });
     return res.json();
