@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import type {
   AnswerEvaluation,
   IntakeProfile,
+  InterviewDecision,
   InterviewLevel,
   InterviewMode,
   MemoryProfile,
@@ -24,7 +25,7 @@ export interface ChatMessage {
   weighted?: boolean;
 }
 
-export type SessionStatus = "idle" | "starting" | "live" | "thinking" | "complete";
+export type SessionStatus = "idle" | "starting" | "live" | "thinking" | "wrapping" | "complete";
 
 interface SessionState {
   status: SessionStatus;
@@ -38,6 +39,7 @@ interface SessionState {
   priorMemory: MemoryProfile | null;
   updatedMemory: MemoryProfile | null;
   justRestored: boolean;
+  turnError: string | null;
 
   loadMemory: () => Promise<void>;
   start: (input: {
@@ -49,7 +51,30 @@ interface SessionState {
   }) => Promise<void>;
   submitAnswer: (text: string) => Promise<void>;
   clearRestored: () => void;
+  clearTurnError: () => void;
   reset: () => void;
+}
+
+const TRANSITIONS = [
+  "Okay. Moving on.",
+  "Got it — let me shift gears.",
+  "Understood. Next question:",
+  "Makes sense. Let's keep going.",
+  "Right. Next one:",
+];
+
+function pickTransition(): string {
+  return TRANSITIONS[Math.floor(Math.random() * TRANSITIONS.length)];
+}
+
+function greetingText(mode: InterviewMode, level: InterviewLevel, count: number): string {
+  const modeDesc: Record<InterviewMode, string> = {
+    full: `a mix of ${count} behavioral, technical, and system design`,
+    behavioral: `${count} behavioral`,
+    technical: `${count} technical`,
+    system_design: `${count} system design`,
+  };
+  return `Hi — good to have you here. We'll work through ${modeDesc[mode]} questions at the ${level} level. I'll push back if an answer needs more depth — that's intentional, not a penalty. Let's start.`;
 }
 
 // UUID message ids so rehydrating a saved session never collides with new
@@ -81,6 +106,7 @@ export const useSessionStore = create<SessionState>()(
       priorMemory: null,
       updatedMemory: null,
       justRestored: false,
+      turnError: null,
 
       loadMemory: async () => {
         const memory = await api.getMemory(getCandidateId());
@@ -89,6 +115,7 @@ export const useSessionStore = create<SessionState>()(
 
       start: async ({ resumeText, jdText, role, mode, level }) => {
         set({ status: "starting", role, messages: [], evaluations: [], updatedMemory: null });
+        try {
         const candidateId = getCandidateId();
         const prior = await api.getMemory(candidateId);
         const { profile, plan } = await api.startSession({
@@ -113,12 +140,23 @@ export const useSessionStore = create<SessionState>()(
               id: mkId(),
               speaker: "interviewer",
               kind: "question",
+              text: greetingText(mode, level, plan.questions.length),
+              questionId: "intro",
+            },
+            {
+              id: mkId(),
+              speaker: "interviewer",
+              kind: "question",
               text: first.prompt,
               questionId: first.id,
               weighted: first.weightedFromWeakness,
             },
           ],
         });
+        } catch (e) {
+          set({ status: "idle" });
+          throw e;
+        }
       },
 
       submitAnswer: async (text) => {
@@ -128,6 +166,7 @@ export const useSessionStore = create<SessionState>()(
 
         set({
           status: "thinking",
+          turnError: null,
           messages: [
             ...state.messages,
             { id: mkId(), speaker: "candidate", kind: "answer", text, questionId: question.id },
@@ -135,12 +174,35 @@ export const useSessionStore = create<SessionState>()(
         });
 
         const isLast = state.currentIdx === state.plan!.questions.length - 1;
-        const { decision, evaluation } = await api.submitAnswer({
-          question,
-          answer: text,
-          followUpCount: state.followUpCount,
-          isLast,
-        });
+
+        // Build the full conversation thread for this question so the Evaluator
+        // has complete context (initial answer + any follow-up exchanges), not
+        // just the final reply in isolation.
+        const priorMsgs = state.messages.filter((m) => m.questionId === question.id);
+        const thread =
+          priorMsgs.length > 0
+            ? priorMsgs
+                .map((m) => `${m.speaker === "interviewer" ? "Q" : "A"}: ${m.text}`)
+                .join("\n") + `\nA: ${text}`
+            : text;
+
+        let decision: InterviewDecision;
+        let evaluation: AnswerEvaluation | undefined;
+        try {
+          ({ decision, evaluation } = await api.submitAnswer({
+            question,
+            answer: thread,
+            followUpCount: state.followUpCount,
+            isLast,
+          }));
+        } catch (e) {
+          set((s) => ({
+            status: "live",
+            turnError: e instanceof Error ? e.message : "Request failed — please try again.",
+            messages: s.messages.slice(0, -1),
+          }));
+          return;
+        }
 
         if (decision.action === "follow_up" && decision.followUpPrompt) {
           set((s) => ({
@@ -164,6 +226,14 @@ export const useSessionStore = create<SessionState>()(
         const evals = evaluation ? [...state.evaluations, evaluation] : state.evaluations;
 
         if (decision.action === "complete") {
+          const closing: ChatMessage = {
+            id: mkId(),
+            speaker: "interviewer",
+            kind: "question",
+            text: "That's everything I wanted to cover. Give me a moment to pull together your evaluation.",
+            questionId: question.id,
+          };
+          set((s) => ({ status: "wrapping", messages: [...s.messages, closing] }));
           // Backend persists the aggregated memory (DynamoDB in real mode,
           // localStorage in mock mode) — it's the source of truth now.
           const updated = await api.finalizeSession({
@@ -176,6 +246,7 @@ export const useSessionStore = create<SessionState>()(
 
         const nextIdx = state.currentIdx + 1;
         const next = state.plan!.questions[nextIdx];
+        const connector = pickTransition();
         set((s) => ({
           status: "live",
           currentIdx: nextIdx,
@@ -187,7 +258,7 @@ export const useSessionStore = create<SessionState>()(
               id: mkId(),
               speaker: "interviewer",
               kind: "question",
-              text: next.prompt,
+              text: `${connector}\n\n${next.prompt}`,
               questionId: next.id,
               weighted: next.weightedFromWeakness,
             },
@@ -196,6 +267,7 @@ export const useSessionStore = create<SessionState>()(
       },
 
       clearRestored: () => set({ justRestored: false }),
+      clearTurnError: () => set({ turnError: null }),
 
       reset: () =>
         set({
@@ -219,7 +291,10 @@ export const useSessionStore = create<SessionState>()(
       // "starting" (no plan yet) falls back to "idle".
       partialize: (s) => ({
         status:
-          s.status === "thinking" ? "live" : s.status === "starting" ? "idle" : s.status,
+          s.status === "thinking" ? "live"
+          : s.status === "starting" ? "idle"
+          : s.status === "wrapping" ? "complete"
+          : s.status,
         role: s.role,
         profile: s.profile,
         plan: s.plan,

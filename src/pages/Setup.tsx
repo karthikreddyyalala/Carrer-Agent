@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "motion/react";
-import { ArrowRight, Sparkle, Brain } from "@phosphor-icons/react";
+import { ArrowRight, Sparkle, Brain, UploadSimple } from "@phosphor-icons/react";
 import { TopBar } from "@/components/TopBar";
 import { MagneticButton } from "@/components/MagneticButton";
 import { useSessionStore } from "@/stores/sessionStore";
 import type { InterviewLevel, InterviewMode } from "@/types/contracts";
+import { extractPdfText } from "@/lib/pdf";
 
 const SAMPLE_RESUME = `Maya Okonkwo — Backend Engineer
 4 years experience. Built a realtime pricing engine in Go that cut p99 latency from 940ms to 180ms under burst load. Led active-active failover for checkout across 3 AWS regions using Kubernetes and Envoy. Strong in distributed systems, Postgres, Kafka. Mentored 2 junior engineers.`;
@@ -43,6 +44,7 @@ export function Setup() {
   const [level, setLevel] = useState<InterviewLevel>("mid");
   const [resume, setResume] = useState("");
   const [jd, setJd] = useState("");
+  const [startError, setStartError] = useState("");
 
   // surface any persisted weaknesses from a previous session
   useEffect(() => {
@@ -50,11 +52,18 @@ export function Setup() {
   }, [loadMemory]);
 
   const starting = status === "starting";
-  const canStart = resume.trim().length > 30 && jd.trim().length > 30 && !starting;
+  const canStart = resume.trim().length > 200 && jd.trim().length > 100 && !starting;
 
   const handleStart = async () => {
-    await start({ resumeText: resume, jdText: jd, role, mode, level });
-    navigate("/interview");
+    setStartError("");
+    try {
+      await start({ resumeText: resume, jdText: jd, role, mode, level });
+      navigate("/interview");
+    } catch (e) {
+      setStartError(
+        e instanceof Error ? e.message : "Failed to start session. Check your inputs and try again."
+      );
+    }
   };
 
   const weakTags = priorMemory?.recurringWeaknesses.slice(0, 3).map((w) => w.tag) ?? [];
@@ -188,27 +197,31 @@ export function Setup() {
             label="YOUR RESUME"
             value={resume}
             onChange={setResume}
-            placeholder="Paste your resume text…"
+            placeholder="Paste your full resume — skills, projects, experience, dates. The more detail, the sharper the questions."
             onSample={() => setResume(SAMPLE_RESUME)}
           />
-          {/* jd */}
           <Field
             label="JOB DESCRIPTION"
             value={jd}
             onChange={setJd}
-            placeholder="Paste the job description…"
+            placeholder="Paste the full job description — requirements, responsibilities, what they're looking for."
             onSample={() => setJd(SAMPLE_JD)}
           />
 
-          <div className="mt-9 flex items-center gap-4">
-            <MagneticButton onClick={handleStart} disabled={!canStart}>
-              {starting ? "Building your interview…" : "Begin interview"}
-              {!starting && <ArrowRight size={17} weight="bold" />}
-            </MagneticButton>
-            {!canStart && !starting && (
-              <span className="font-mono text-[11px] text-fog">
-                Paste both to continue
-              </span>
+          <div className="mt-9 flex flex-col gap-3">
+            <div className="flex items-center gap-4">
+              <MagneticButton onClick={handleStart} disabled={!canStart}>
+                {starting ? "Building your interview…" : "Begin interview"}
+                {!starting && <ArrowRight size={17} weight="bold" />}
+              </MagneticButton>
+              {!canStart && !starting && (
+                <span className="font-mono text-[11px] text-fog">
+                  Paste your full resume and JD to continue
+                </span>
+              )}
+            </div>
+            {startError && (
+              <p className="font-mono text-[11px] text-fail">{startError}</p>
             )}
           </div>
         </section>
@@ -232,18 +245,64 @@ function Field({
   placeholder: string;
   onSample: () => void;
 }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [fileError, setFileError] = useState("");
+
+  const handleFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      setFileError("Only PDF files are supported.");
+      return;
+    }
+    setFileError("");
+    setExtracting(true);
+    try {
+      const text = await extractPdfText(file);
+      if (text.trim().length < 20) {
+        setFileError("Couldn't read text from this PDF. Try pasting manually.");
+      } else {
+        onChange(text);
+      }
+    } catch {
+      setFileError("Failed to parse PDF. Paste the text directly instead.");
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   return (
     <div className="mt-7">
       <div className="mb-2.5 flex items-center justify-between">
         <label className="font-mono text-[11px] tracking-[0.16em] text-fog">{label}</label>
-        <button
-          onClick={onSample}
-          className="inline-flex items-center gap-1.5 font-mono text-[11px] text-accent transition-opacity hover:opacity-70"
-        >
-          <Sparkle size={13} weight="fill" />
-          USE SAMPLE
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={extracting}
+            className="inline-flex items-center gap-1.5 font-mono text-[11px] text-fog transition-colors hover:text-chalk disabled:opacity-40"
+          >
+            <UploadSimple size={13} weight="bold" />
+            {extracting ? "READING…" : "UPLOAD PDF"}
+          </button>
+          <button
+            onClick={onSample}
+            className="inline-flex items-center gap-1.5 font-mono text-[11px] text-accent transition-opacity hover:opacity-70"
+          >
+            <Sparkle size={13} weight="fill" />
+            USE SAMPLE
+          </button>
+        </div>
       </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".pdf"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleFile(f);
+          e.target.value = "";
+        }}
+      />
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -251,6 +310,9 @@ function Field({
         rows={6}
         className="w-full resize-none rounded-2xl border border-line bg-ink p-4 text-sm leading-relaxed text-chalk placeholder:text-fog focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/40"
       />
+      {fileError && (
+        <p className="mt-1.5 font-mono text-[11px] text-fail">{fileError}</p>
+      )}
     </div>
   );
 }

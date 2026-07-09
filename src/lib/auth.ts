@@ -9,6 +9,8 @@ import {
   signOut as amplifySignOut,
   resendSignUpCode,
   fetchAuthSession,
+  resetPassword as amplifyResetPassword,
+  confirmResetPassword as amplifyConfirmResetPassword,
 } from "aws-amplify/auth";
 
 const USER_POOL_ID = import.meta.env.VITE_COGNITO_USER_POOL_ID ?? "";
@@ -58,6 +60,22 @@ export const authApi = {
 
   async signOut(): Promise<void> {
     await amplifySignOut();
+  },
+
+  async forgotPassword(email: string): Promise<void> {
+    await amplifyResetPassword({ username: email });
+  },
+
+  async confirmForgotPassword(
+    email: string,
+    code: string,
+    newPassword: string
+  ): Promise<void> {
+    await amplifyConfirmResetPassword({
+      username: email,
+      confirmationCode: code,
+      newPassword,
+    });
   },
 
   // Returns the current session (sub + raw ID token) or null if signed out.

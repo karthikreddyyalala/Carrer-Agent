@@ -38,6 +38,21 @@ const apiUrl = (path: string) => `${API_BASE}${path}`;
 
 const latency = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+async function safeFetch(url: string, options?: RequestInit): Promise<Response> {
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body?.detail ?? body?.message ?? "";
+    } catch {
+      detail = await res.text().catch(() => "");
+    }
+    throw new Error(detail || `Request failed (${res.status})`);
+  }
+  return res;
+}
+
 function readMockMemory(candidateId: string): MemoryProfile | null {
   try {
     const raw = localStorage.getItem(MOCK_MEMORY_KEY);
@@ -76,7 +91,7 @@ export const api = {
     if (USE_MOCK) {
       return readMockMemory(candidateId) ?? emptyMemory(candidateId);
     }
-    const res = await fetch(apiUrl(`/api/memory/${encodeURIComponent(candidateId)}`), {
+    const res = await safeFetch(apiUrl(`/api/memory/${encodeURIComponent(candidateId)}`), {
       headers: await authHeaders(false),
     });
     return res.json();
@@ -94,7 +109,7 @@ export const api = {
       await latency(1400);
       return mockEngine.buildSession(input.role, input.mode);
     }
-    const res = await fetch(apiUrl("/api/session/start"), {
+    const res = await safeFetch(apiUrl("/api/session/start"), {
       method: "POST",
       headers: await authHeaders(),
       body: JSON.stringify(input),
@@ -112,7 +127,7 @@ export const api = {
       await latency(1100);
       return mockEngine.decide(input.question, input.answer, input.followUpCount, input.isLast);
     }
-    const res = await fetch(apiUrl("/api/session/turn"), {
+    const res = await safeFetch(apiUrl("/api/session/turn"), {
       method: "POST",
       headers: await authHeaders(),
       body: JSON.stringify(input),
@@ -133,7 +148,7 @@ export const api = {
       writeMockMemory(updated);
       return updated;
     }
-    const res = await fetch(apiUrl("/api/session/finalize"), {
+    const res = await safeFetch(apiUrl("/api/session/finalize"), {
       method: "POST",
       headers: await authHeaders(),
       body: JSON.stringify(input),

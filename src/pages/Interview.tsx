@@ -9,12 +9,15 @@ import {
   Waveform,
   SpeakerHigh,
   SpeakerSlash,
+  Warning,
+  ArrowClockwise,
 } from "@phosphor-icons/react";
 import { TopBar } from "@/components/TopBar";
 import { TypeChip, DifficultyMeter, WeightedTag } from "@/components/QuestionMeta";
 import { InterviewerAvatar, type AvatarState } from "@/components/InterviewerAvatar";
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useKokoroTTS } from "@/hooks/useKokoroTTS";
 import { useSessionStore } from "@/stores/sessionStore";
 
 export function Interview() {
@@ -27,15 +30,26 @@ export function Interview() {
   const submitAnswer = useSessionStore((s) => s.submitAnswer);
   const justRestored = useSessionStore((s) => s.justRestored);
   const clearRestored = useSessionStore((s) => s.clearRestored);
+  const turnError = useSessionStore((s) => s.turnError);
+  const clearTurnError = useSessionStore((s) => s.clearTurnError);
 
   const [draft, setDraft] = useState("");
+  const [lastDraft, setLastDraft] = useState("");
+  const [slowThinking, setSlowThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Voice: TTS for the interviewer, STT for the candidate. Both degrade
-  // gracefully when the browser lacks support.
-  const tts = useSpeechSynthesis();
+  // Voice: Kokoro TTS (near-human quality, loads lazily) with Web Speech API
+  // as the fallback while the model is downloading or if it fails to load.
+  const kokoro = useKokoroTTS();
+  const webSpeech = useSpeechSynthesis();
   const stt = useSpeechRecognition();
-  const voiceCapable = tts.supported || stt.supported;
+
+  // Route to Kokoro when ready, otherwise fall back to Web Speech API.
+  const tts = kokoro.status === "ready"
+    ? { speak: kokoro.speak, cancel: kokoro.cancel, speaking: kokoro.speaking, supported: true as const }
+    : webSpeech;
+
+  const voiceCapable = webSpeech.supported || stt.supported;
   const [voiceOn, setVoiceOn] = useState(false);
   const lastSpokenId = useRef<string | null>(null);
 
@@ -55,9 +69,13 @@ export function Interview() {
   }, [stt.listening, stt.transcript]);
 
   // No active session (e.g. refreshed straight here) — bounce to setup.
+  // Delay the results navigation slightly so the closing message is visible.
   useEffect(() => {
     if (status === "idle") navigate("/setup");
-    if (status === "complete") navigate("/results");
+    if (status === "complete") {
+      const t = setTimeout(() => navigate("/results"), 1800);
+      return () => clearTimeout(t);
+    }
   }, [status, navigate]);
 
   // Acknowledge a resumed session, then drop the flag after a moment.
@@ -71,12 +89,25 @@ export function Interview() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, status]);
 
+  // Restore the draft when a turn fails so the user can retry without retyping.
+  useEffect(() => {
+    if (turnError && lastDraft) setDraft(lastDraft);
+  }, [turnError]);
+
+  // Flag a slow request after 6 seconds so we can show a reassurance message.
+  useEffect(() => {
+    if (status !== "thinking") { setSlowThinking(false); return; }
+    const t = setTimeout(() => setSlowThinking(true), 6000);
+    return () => clearTimeout(t);
+  }, [status]);
+
   if (!plan) return null;
 
   const question = plan.questions[currentIdx];
   const thinking = status === "thinking";
+  const locked = thinking || status === "wrapping" || status === "complete";
   const total = plan.questions.length;
-  const progressPct = ((currentIdx + (status === "complete" ? 1 : 0)) / total) * 100;
+  const progressPct = ((currentIdx + (status === "complete" || status === "wrapping" ? 1 : 0)) / total) * 100;
 
   const avatarState: AvatarState = tts.speaking
     ? "speaking"
@@ -87,6 +118,9 @@ export function Interview() {
   const toggleVoice = () => {
     const next = !voiceOn;
     setVoiceOn(next);
+    if (next && kokoro.status === "idle") {
+      kokoro.load(); // start downloading the model in the background
+    }
     if (!next) {
       tts.cancel();
       if (stt.listening) stt.stop();
@@ -103,9 +137,12 @@ export function Interview() {
   };
 
   const send = () => {
-    if (!draft.trim() || thinking) return;
+    if (!draft.trim() || locked) return;
     if (stt.listening) stt.stop();
-    submitAnswer(draft.trim());
+    const text = draft.trim();
+    setLastDraft(text);
+    clearTurnError();
+    submitAnswer(text);
     setDraft("");
   };
 
@@ -117,15 +154,28 @@ export function Interview() {
             {voiceCapable && (
               <button
                 onClick={toggleVoice}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[10px] tracking-[0.14em] tactile transition-colors ${
+                disabled={kokoro.status === "loading"}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[10px] tracking-[0.14em] tactile transition-colors disabled:opacity-50 ${
                   voiceOn
                     ? "border-accent/50 bg-accent/10 text-accent"
                     : "border-line-bright text-fog hover:text-chalk"
                 }`}
-                title={voiceOn ? "Turn voice off" : "Turn voice on"}
+                title={
+                  kokoro.status === "loading"
+                    ? "Downloading voice model…"
+                    : voiceOn
+                    ? "Turn voice off"
+                    : "Turn voice on"
+                }
               >
-                {voiceOn ? <SpeakerHigh size={13} weight="fill" /> : <SpeakerSlash size={13} />}
-                VOICE
+                {kokoro.status === "loading" ? (
+                  <span className="inline-block h-[13px] w-[13px] animate-spin rounded-full border border-current border-t-transparent" />
+                ) : voiceOn ? (
+                  <SpeakerHigh size={13} weight="fill" />
+                ) : (
+                  <SpeakerSlash size={13} />
+                )}
+                {kokoro.status === "loading" ? "LOADING…" : "VOICE"}
               </button>
             )}
             <span className="font-mono text-[11px] tracking-wide text-fog">
@@ -157,10 +207,14 @@ export function Interview() {
             )}
             {voiceOn && (
               <span className="w-full font-mono text-[10px] tracking-[0.14em] text-fog">
-                {tts.speaking
+                {kokoro.status === "loading"
+                  ? "DOWNLOADING VOICE MODEL — USING SYSTEM VOICE MEANWHILE…"
+                  : tts.speaking
                   ? "INTERVIEWER SPEAKING…"
                   : stt.listening
                   ? "LISTENING — SPEAK YOUR ANSWER"
+                  : kokoro.status === "ready"
+                  ? "KOKORO VOICE READY"
                   : "VOICE READY"}
               </span>
             )}
@@ -182,6 +236,32 @@ export function Interview() {
               <span className="font-mono text-[11px] tracking-wide text-survive">
                 SESSION RESTORED — picked up right where you left off.
               </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* turn error banner */}
+      <AnimatePresence>
+        {turnError && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="border-b border-fail/25 bg-fail/[0.06]"
+          >
+            <div className="mx-auto flex max-w-[820px] items-center justify-between gap-3 px-5 py-3 sm:px-8">
+              <div className="flex items-center gap-2.5">
+                <Warning size={15} weight="fill" className="shrink-0 text-fail" />
+                <span className="font-mono text-[11px] tracking-wide text-fail">{turnError}</span>
+              </div>
+              <button
+                onClick={() => { clearTurnError(); }}
+                className="flex items-center gap-1.5 font-mono text-[11px] text-fog transition-colors hover:text-chalk"
+              >
+                <ArrowClockwise size={13} weight="bold" />
+                RETRY
+              </button>
             </div>
           </motion.div>
         )}
@@ -225,7 +305,7 @@ export function Interview() {
             ))}
           </AnimatePresence>
 
-          {thinking && <ThinkingBubble />}
+          {thinking && <ThinkingBubble slow={slowThinking} />}
         </div>
       </div>
 
@@ -236,7 +316,7 @@ export function Interview() {
             {stt.supported && (
               <button
                 onClick={toggleMic}
-                disabled={thinking}
+                disabled={locked}
                 className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl tactile transition-colors disabled:opacity-30 ${
                   stt.listening
                     ? "bg-survive/15 text-survive"
@@ -263,20 +343,22 @@ export function Interview() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
               }}
-              disabled={thinking}
+              disabled={locked}
               rows={2}
               placeholder={
                 stt.listening
                   ? "Listening…"
                   : thinking
                   ? "Interviewer is thinking…"
+                  : status === "wrapping" || status === "complete"
+                  ? "Session complete — pulling your results…"
                   : "Type or speak your answer — be specific."
               }
               className="max-h-40 min-h-[44px] flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] leading-relaxed text-chalk placeholder:text-fog focus:outline-none disabled:opacity-50"
             />
             <button
               onClick={send}
-              disabled={!draft.trim() || thinking}
+              disabled={!draft.trim() || locked}
               className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-accent text-void tactile transition-opacity disabled:opacity-30"
               aria-label="Send answer"
             >
@@ -292,7 +374,7 @@ export function Interview() {
   );
 }
 
-function ThinkingBubble() {
+function ThinkingBubble({ slow }: { slow: boolean }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -300,15 +382,30 @@ function ThinkingBubble() {
       className="flex justify-start"
     >
       <div className="rounded-2xl bg-surface px-4 py-3.5">
-        <div className="flex items-center gap-1.5">
-          {[0, 1, 2].map((i) => (
-            <motion.span
-              key={i}
-              className="h-1.5 w-1.5 rounded-full bg-fog"
-              animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
-              transition={{ duration: 1, repeat: Infinity, delay: i * 0.18 }}
-            />
-          ))}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            {[0, 1, 2].map((i) => (
+              <motion.span
+                key={i}
+                className="h-1.5 w-1.5 rounded-full bg-fog"
+                animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
+                transition={{ duration: 1, repeat: Infinity, delay: i * 0.18 }}
+              />
+            ))}
+          </div>
+          <AnimatePresence>
+            {slow && (
+              <motion.span
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.4 }}
+                className="font-mono text-[10px] tracking-wide text-fog"
+              >
+                still thinking…
+              </motion.span>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </motion.div>
