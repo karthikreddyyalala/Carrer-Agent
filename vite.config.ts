@@ -1,5 +1,4 @@
-/// <reference types="vitest" />
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";

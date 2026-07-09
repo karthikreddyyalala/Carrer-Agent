@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useSessionStore } from "./sessionStore";
+import type { TurnResult } from "@/lib/api";
 import type { QuestionPlan, InterviewDecision } from "@/types/contracts";
 
 // ---- Mocks ----------------------------------------------------------------
@@ -187,9 +188,9 @@ describe("sessionStore — turnError", () => {
       const { api } = await import("@/lib/api");
 
       // Resolve on the next tick so we can inspect state mid-flight.
-      let resolveCall!: (v: unknown) => void;
+      let resolveCall!: (v: TurnResult) => void;
       vi.mocked(api.submitAnswer).mockReturnValueOnce(
-        new Promise((r) => { resolveCall = r; })
+        new Promise<TurnResult>((r) => { resolveCall = r; })
       );
 
       const submitPromise = useSessionStore.getState().submitAnswer("answer");
