@@ -104,9 +104,15 @@ else
 fi
 
 echo "==> Invalidating CloudFront cache so the new build shows immediately"
-aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*" \
-  --query "Invalidation.Id" --output text
+if aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*" \
+     --query "Invalidation.Id" --output text 2>/dev/null; then
+  echo "    invalidation created"
+else
+  echo "    WARNING: could not create invalidation (missing cloudfront:CreateInvalidation)."
+  echo "    New assets (hashed filenames) serve immediately; index.html may take up"
+  echo "    to the cache TTL to refresh. Add the permission or invalidate in the console."
+fi
 
 echo ""
-echo "Frontend deployed to the stable URL (cache invalidation propagates in ~1-3 min):"
+echo "Frontend deployed to the stable URL:"
 echo "  https://${DOMAIN}"
