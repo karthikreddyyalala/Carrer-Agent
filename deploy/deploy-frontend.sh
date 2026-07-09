@@ -3,10 +3,12 @@
 # Deploys the frontend: builds the SPA pointed at the live API, pushes it to a
 # private S3 bucket, and serves it over HTTPS via CloudFront (Origin Access
 # Control). HTTPS is required so the in-browser mic (voice mode) works.
-# Idempotent for the bucket/build; creates the CloudFront distribution once.
+# Fully idempotent: reuses the existing CloudFront distribution (matched by the
+# "crucible frontend" comment) so the public URL stays stable across runs, and
+# invalidates the cache so a new build shows immediately.
 #
 # Usage:
-#   CRUCIBLE_API_BASE="https://xxxx.lambda-url.us-west-2.on.aws" bash deploy/deploy-frontend.sh
+#   CRUCIBLE_API_BASE="https://xxxx.execute-api.us-west-2.amazonaws.com" bash deploy/deploy-frontend.sh
 set -euo pipefail
 
 ACCOUNT="557690618983"
@@ -72,27 +74,39 @@ DIST_CONFIG=$(cat <<JSON
 JSON
 )
 
-echo "==> Creating CloudFront distribution"
-DIST_JSON=$(aws cloudfront create-distribution --distribution-config "$DIST_CONFIG")
-DIST_ID=$(echo "$DIST_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['Distribution']['Id'])")
-DOMAIN=$(echo "$DIST_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['Distribution']['DomainName'])")
+# Reuse an existing distribution (stable public URL) or create one on first run.
+DIST_ID=$(aws cloudfront list-distributions \
+  --query "DistributionList.Items[?Comment=='crucible frontend'].Id | [0]" \
+  --output text 2>/dev/null || echo "None")
 
-echo "==> Bucket policy: allow this distribution to read"
-aws s3api put-bucket-policy --bucket "$BUCKET" --policy "{
-  \"Version\": \"2012-10-17\",
-  \"Statement\": [{
-    \"Sid\": \"AllowCloudFront\",
-    \"Effect\": \"Allow\",
-    \"Principal\": { \"Service\": \"cloudfront.amazonaws.com\" },
-    \"Action\": \"s3:GetObject\",
-    \"Resource\": \"arn:aws:s3:::${BUCKET}/*\",
-    \"Condition\": { \"StringEquals\": { \"AWS:SourceArn\": \"arn:aws:cloudfront::${ACCOUNT}:distribution/${DIST_ID}\" } }
-  }]
-}" >/dev/null
+if [ "$DIST_ID" = "None" ] || [ -z "$DIST_ID" ]; then
+  echo "==> Creating CloudFront distribution (first run)"
+  DIST_JSON=$(aws cloudfront create-distribution --distribution-config "$DIST_CONFIG")
+  DIST_ID=$(echo "$DIST_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['Distribution']['Id'])")
+  DOMAIN=$(echo "$DIST_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['Distribution']['DomainName'])")
+
+  echo "==> Bucket policy: allow this distribution to read"
+  aws s3api put-bucket-policy --bucket "$BUCKET" --policy "{
+    \"Version\": \"2012-10-17\",
+    \"Statement\": [{
+      \"Sid\": \"AllowCloudFront\",
+      \"Effect\": \"Allow\",
+      \"Principal\": { \"Service\": \"cloudfront.amazonaws.com\" },
+      \"Action\": \"s3:GetObject\",
+      \"Resource\": \"arn:aws:s3:::${BUCKET}/*\",
+      \"Condition\": { \"StringEquals\": { \"AWS:SourceArn\": \"arn:aws:cloudfront::${ACCOUNT}:distribution/${DIST_ID}\" } }
+    }]
+  }" >/dev/null
+else
+  DOMAIN=$(aws cloudfront get-distribution --id "$DIST_ID" \
+    --query "Distribution.DomainName" --output text)
+  echo "==> Reusing existing distribution ${DIST_ID} (${DOMAIN})"
+fi
+
+echo "==> Invalidating CloudFront cache so the new build shows immediately"
+aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*" \
+  --query "Invalidation.Id" --output text
 
 echo ""
-echo "Frontend deploying (CloudFront takes ~5-10 min to finish propagating):"
+echo "Frontend deployed to the stable URL (cache invalidation propagates in ~1-3 min):"
 echo "  https://${DOMAIN}"
-echo ""
-echo "IMPORTANT: re-point the backend CORS at this domain:"
-echo "  CRUCIBLE_CORS_ORIGINS=\"https://${DOMAIN}\" bash deploy/deploy-backend.sh"
