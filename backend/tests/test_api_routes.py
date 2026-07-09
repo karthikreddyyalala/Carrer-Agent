@@ -247,3 +247,42 @@ def test_start_loads_prior_memory_from_store():
     assert res.status_code == 200
     # the planner prompt carried the persisted weakness
     assert "no-edge-cases" in captured["planner_user"]
+
+
+class _RaisingLLM:
+    """Simulates an agent call that fails even after retries are exhausted."""
+
+    def structured(self, *, model, system, user, schema, max_tokens=2000):
+        raise RuntimeError("bedrock throttled: too many requests")
+
+
+def test_turn_agent_failure_returns_clean_503():
+    # A raised agent error must surface as a clean, retryable JSON error the
+    # browser can read — never an opaque crash that hangs the interview.
+    app = create_app(llm=_RaisingLLM(), store=InMemoryStore())
+    client = TestClient(app, raise_server_exceptions=False)
+    res = client.post(
+        "/api/session/turn",
+        json={
+            "question": _QUESTION_BODY,
+            "answer": "some answer",
+            "followUpCount": 0,
+            "isLast": False,
+        },
+    )
+    assert res.status_code == 503
+    body = res.json()
+    assert "detail" in body
+    # Human-readable, not a stack trace or "Internal Server Error"
+    assert "interviewer" in body["detail"].lower() or "try again" in body["detail"].lower()
+
+
+def test_start_session_failure_returns_clean_503():
+    app = create_app(llm=_RaisingLLM(), store=InMemoryStore())
+    client = TestClient(app, raise_server_exceptions=False)
+    res = client.post(
+        "/api/session/start",
+        json={"resumeText": "r", "jdText": "j", "role": "sde"},
+    )
+    assert res.status_code == 503
+    assert "detail" in res.json()

@@ -5,7 +5,10 @@ Output STRICT JSON only — no prose, no markdown fences.
 
 Input you receive:
 - Question ID, type, difficulty, and prompt
-- The candidate's full answer transcript
+- The full question-answer thread for this question: the opening question (Q:),
+  any follow-up exchanges (Q: / A: pairs), and the candidate's final answer.
+  Evaluate the ENTIRE thread as one coherent response — do not penalise the
+  candidate for answers that only make sense in the context of prior follow-ups.
 - The number of follow-up probes already asked (followUpCount)
 
 Rubric by question type (score each criterion 0-5):
