@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { ArrowRight, Warning } from "@phosphor-icons/react";
 import { Atmosphere } from "@/components/Atmosphere";
@@ -7,6 +7,7 @@ import { Wordmark } from "@/components/Wordmark";
 import { MagneticButton } from "@/components/MagneticButton";
 import { authApi } from "@/lib/auth";
 import { useAuthStore } from "@/stores/authStore";
+import { signInPrompt, redirectTarget } from "@/lib/authContext";
 
 type Mode = "signin" | "signup" | "confirm" | "forgot" | "reset";
 
@@ -27,7 +28,12 @@ function formatAuthError(e: unknown): string {
 
 export function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const refresh = useAuthStore((s) => s.refresh);
+
+  const from = (location.state as { from?: string } | null)?.from;
+  const contextPrompt = signInPrompt(from);
+  const dest = redirectTarget(from);
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -55,7 +61,7 @@ export function Login() {
         await authApi.confirm(email, code);
         await authApi.signIn(email, password);
         await refresh();
-        navigate("/dashboard");
+        navigate(dest);
         return;
       }
       if (mode === "forgot") {
@@ -67,13 +73,13 @@ export function Login() {
         await authApi.confirmForgotPassword(email, code, newPassword);
         await authApi.signIn(email, newPassword);
         await refresh();
-        navigate("/dashboard");
+        navigate(dest);
         return;
       }
       // signin
       await authApi.signIn(email, password);
       await refresh();
-      navigate("/dashboard");
+      navigate(dest);
     } catch (e) {
       setError(formatAuthError(e));
     } finally {
@@ -124,6 +130,14 @@ export function Login() {
             {title}
           </h1>
           <p className="mt-2 text-sm text-mist">{subtitle}</p>
+
+          {contextPrompt && (mode === "signin" || mode === "signup") && (
+            <div className="mt-4 rounded-xl border border-accent/25 bg-accent/[0.07] px-3.5 py-2.5">
+              <span className="font-mono text-[11px] tracking-wide text-accent">
+                {contextPrompt}
+              </span>
+            </div>
+          )}
 
           <div className="mt-8 space-y-4">
             {mode === "confirm" && (

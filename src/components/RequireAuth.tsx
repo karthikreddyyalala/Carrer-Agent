@@ -1,14 +1,16 @@
 import { useEffect, type ReactNode } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { authApi } from "@/lib/auth";
 import { useAuthStore } from "@/stores/authStore";
 
 // Gates protected routes. When auth isn't configured (local/mock builds), it's
 // a no-op so development stays frictionless. When configured, unauthenticated
-// visitors are redirected to /login.
+// visitors are redirected to /login — carrying the path they wanted so the
+// login screen can explain why and send them back there after signing in.
 export function RequireAuth({ children }: { children: ReactNode }) {
   const status = useAuthStore((s) => s.status);
   const refresh = useAuthStore((s) => s.refresh);
+  const location = useLocation();
 
   useEffect(() => {
     if (status === "loading") refresh();
@@ -16,7 +18,9 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
   if (!authApi.configured) return <>{children}</>;
   if (status === "loading") return <AuthSplash />;
-  if (status === "anon") return <Navigate to="/login" replace />;
+  if (status === "anon") {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
   return <>{children}</>;
 }
 
