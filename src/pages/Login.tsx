@@ -55,7 +55,7 @@ export function Login() {
         await authApi.confirm(email, code);
         await authApi.signIn(email, password);
         await refresh();
-        navigate("/setup");
+        navigate("/dashboard");
         return;
       }
       if (mode === "forgot") {
@@ -67,13 +67,13 @@ export function Login() {
         await authApi.confirmForgotPassword(email, code, newPassword);
         await authApi.signIn(email, newPassword);
         await refresh();
-        navigate("/setup");
+        navigate("/dashboard");
         return;
       }
       // signin
       await authApi.signIn(email, password);
       await refresh();
-      navigate("/setup");
+      navigate("/dashboard");
     } catch (e) {
       setError(formatAuthError(e));
     } finally {

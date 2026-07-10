@@ -181,11 +181,11 @@ export function Results() {
             <button
               onClick={() => {
                 reset();
-                navigate("/");
+                navigate("/dashboard");
               }}
               className="inline-flex items-center gap-2 rounded-full border border-line-bright px-6 py-3.5 text-sm font-semibold text-chalk tactile hover:bg-surface"
             >
-              Home
+              View your progress
               <ArrowRight size={16} weight="bold" />
             </button>
           </div>

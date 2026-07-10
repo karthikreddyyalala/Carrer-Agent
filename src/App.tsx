@@ -3,6 +3,7 @@ import { Atmosphere } from "./components/Atmosphere";
 import { RequireAuth } from "./components/RequireAuth";
 import { Landing } from "./pages/Landing";
 import { Login } from "./pages/Login";
+import { Dashboard } from "./pages/Dashboard";
 import { Setup } from "./pages/Setup";
 import { Interview } from "./pages/Interview";
 import { Results } from "./pages/Results";
@@ -16,6 +17,14 @@ export function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/privacy" element={<Privacy />} />
+        <Route
+          path="/dashboard"
+          element={
+            <RequireAuth>
+              <Dashboard />
+            </RequireAuth>
+          }
+        />
         <Route
           path="/setup"
           element={
