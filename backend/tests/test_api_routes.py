@@ -286,3 +286,76 @@ def test_start_session_failure_returns_clean_503():
     )
     assert res.status_code == 503
     assert "detail" in res.json()
+
+
+# --- per-session history ---------------------------------------------------
+
+_QUESTIONS_BODY = [
+    {"id": "q0", "type": "behavioral", "prompt": "Tell me about a deadline.",
+     "targetDifficulty": 3, "weightedFromWeakness": False},
+    {"id": "q1", "type": "technical", "prompt": "Explain a hash map.",
+     "targetDifficulty": 3, "weightedFromWeakness": False},
+]
+
+_EVALS_BODY = [
+    {"questionId": "q0", "transcript": "Q: Tell me...\nA: I shipped it.",
+     "rubricScores": {"structure": 4.0}, "weaknessTags": [], "followUpCount": 0,
+     "wouldSurviveRealInterview": True, "survivalReasoning": "Solid."},
+    {"questionId": "q1", "transcript": "Q: Explain...\nA: buckets.",
+     "rubricScores": {"correctness": 2.0}, "weaknessTags": ["shallow-depth"],
+     "followUpCount": 1, "wouldSurviveRealInterview": False, "survivalReasoning": "Thin."},
+]
+
+
+def _finalize_body(session_id="sess-1"):
+    return {
+        "candidateId": "local-dev",
+        "sessionId": session_id,
+        "mode": "full",
+        "level": "mid",
+        "questions": _QUESTIONS_BODY,
+        "evaluations": _EVALS_BODY,
+    }
+
+
+def test_finalize_persists_session_and_lists_it():
+    store = InMemoryStore()
+    client = _client({"MemoryProfile": _MEMORY}, store=store)
+
+    fin = client.post("/api/session/finalize", json=_finalize_body("sess-1"))
+    assert fin.status_code == 200
+
+    listed = client.get("/api/sessions")
+    assert listed.status_code == 200
+    rows = listed.json()
+    assert len(rows) == 1
+    assert rows[0]["sessionId"] == "sess-1"
+    assert rows[0]["survived"] == 1 and rows[0]["total"] == 2
+    assert rows[0]["mode"] == "full" and rows[0]["level"] == "mid"
+
+
+def test_get_session_returns_full_record_with_transcripts():
+    store = InMemoryStore()
+    client = _client({"MemoryProfile": _MEMORY}, store=store)
+    client.post("/api/session/finalize", json=_finalize_body("sess-abc"))
+
+    res = client.get("/api/sessions/sess-abc")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["sessionId"] == "sess-abc"
+    assert len(body["questions"]) == 2
+    assert body["evaluations"][0]["transcript"].startswith("Q: Tell me")
+    assert body["evaluations"][1]["wouldSurviveRealInterview"] is False
+
+
+def test_get_missing_session_returns_404():
+    client = _client({"MemoryProfile": _MEMORY}, store=InMemoryStore())
+    res = client.get("/api/sessions/does-not-exist")
+    assert res.status_code == 404
+
+
+def test_sessions_list_empty_when_none():
+    client = _client({"MemoryProfile": _MEMORY}, store=InMemoryStore())
+    res = client.get("/api/sessions")
+    assert res.status_code == 200
+    assert res.json() == []

@@ -2,7 +2,7 @@ from datetime import date
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
@@ -16,6 +16,8 @@ from models.contracts import (
     MemoryProfile,
     PlannedQuestion,
     QuestionPlan,
+    SessionRecord,
+    SessionSummary,
 )
 from agents.evaluator import EvaluatorAgent
 from agents.interviewer import InterviewerAgent
@@ -57,6 +59,12 @@ class TurnResponse(_Base):
 class FinalizeRequest(_Base):
     candidate_id: str = "local-dev"
     evaluations: list[AnswerEvaluation]
+    # Optional so older clients keep working; when present, a reviewable
+    # SessionRecord is persisted alongside the updated memory.
+    session_id: str | None = None
+    mode: str = "full"
+    level: str = "mid"
+    questions: list[PlannedQuestion] = []
 
 
 def _empty_memory(candidate_id: str) -> MemoryProfile:
@@ -129,14 +137,44 @@ def build_session_router(*, llm, settings: Settings, store: MemoryStore) -> APIR
     @router.post("/session/finalize")
     def finalize(req: FinalizeRequest, sub: str | None = Depends(current_sub)) -> MemoryProfile:
         cid = sub or req.candidate_id
+        today = date.today().isoformat()
         existing = store.get_memory(cid) or _empty_memory(cid)
         updated = memory_agent.run(
             candidate_id=cid,
-            session_date=date.today().isoformat(),
+            session_date=today,
             evaluations=req.evaluations,
             existing_memory=existing,
         )
         store.put_memory(updated)
+
+        # Persist a reviewable record of this session when the client sent the
+        # session id + questions (newer clients). Older payloads just update
+        # memory, unchanged.
+        if req.session_id:
+            store.put_session(
+                SessionRecord(
+                    session_id=req.session_id,
+                    candidate_id=cid,
+                    date=today,
+                    mode=req.mode,
+                    level=req.level,
+                    questions=req.questions,
+                    evaluations=req.evaluations,
+                )
+            )
         return updated
+
+    @router.get("/sessions")
+    def list_sessions(sub: str | None = Depends(current_sub)) -> list[SessionSummary]:
+        cid = sub or "local-dev"
+        return store.list_sessions(cid)
+
+    @router.get("/sessions/{session_id}")
+    def get_session(session_id: str, sub: str | None = Depends(current_sub)) -> SessionRecord:
+        cid = sub or "local-dev"
+        record = store.get_session(cid, session_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Session not found.")
+        return record
 
     return router

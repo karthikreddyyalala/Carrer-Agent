@@ -1,6 +1,6 @@
 from typing import Protocol
 
-from models.contracts import MemoryProfile
+from models.contracts import MemoryProfile, SessionRecord, SessionSummary
 
 
 class MemoryStore(Protocol):
@@ -15,3 +15,10 @@ class MemoryStore(Protocol):
     def get_memory(self, candidate_id: str) -> MemoryProfile | None: ...
 
     def put_memory(self, profile: MemoryProfile) -> None: ...
+
+    # Per-session records power the dashboard's reviewable session history.
+    def put_session(self, record: SessionRecord) -> None: ...
+
+    def list_sessions(self, candidate_id: str) -> list[SessionSummary]: ...
+
+    def get_session(self, candidate_id: str, session_id: str) -> SessionRecord | None: ...

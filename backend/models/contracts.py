@@ -64,6 +64,38 @@ class MemoryProfile(_Base):
     strong_areas: list[str]
 
 
+class SessionSummary(_Base):
+    """Lightweight row for the dashboard's past-sessions list."""
+    session_id: str
+    date: str
+    mode: str
+    level: str
+    survived: int
+    total: int
+
+
+class SessionRecord(_Base):
+    """Full replayable session: the questions asked and how each was scored."""
+    session_id: str
+    candidate_id: str
+    date: str
+    mode: str
+    level: str
+    questions: list[PlannedQuestion]
+    evaluations: list[AnswerEvaluation]
+
+    def summary(self) -> SessionSummary:
+        survived = sum(1 for e in self.evaluations if e.would_survive_real_interview)
+        return SessionSummary(
+            session_id=self.session_id,
+            date=self.date,
+            mode=self.mode,
+            level=self.level,
+            survived=survived,
+            total=len(self.evaluations),
+        )
+
+
 class InterviewDecision(_Base):
     action: Literal["follow_up", "advance", "complete"]
     follow_up_prompt: str | None = None
