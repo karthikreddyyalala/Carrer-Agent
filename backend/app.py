@@ -43,6 +43,10 @@ def create_app(
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
+        # Vercel serves the app on the project domain plus a unique per-commit
+        # preview URL, so match the whole *.vercel.app space rather than pinning
+        # one host. The explicit allow_origins list still covers CloudFront/local.
+        allow_origin_regex=r"https://.*\.vercel\.app",
         allow_methods=["*"],
         allow_headers=["*"],
     )
