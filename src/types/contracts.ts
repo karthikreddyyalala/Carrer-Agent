@@ -70,3 +70,22 @@ export interface MemoryProfile {
   improvementTrend: TrendPoint[];
   strongAreas: string[];
 }
+
+export interface SessionSummary {
+  sessionId: string;
+  date: string;
+  mode: string;
+  level: string;
+  survived: number;
+  total: number;
+}
+
+export interface SessionRecord {
+  sessionId: string;
+  candidateId: string;
+  date: string;
+  mode: string;
+  level: string;
+  questions: PlannedQuestion[];
+  evaluations: AnswerEvaluation[];
+}

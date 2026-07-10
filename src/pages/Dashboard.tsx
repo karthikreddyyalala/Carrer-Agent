@@ -10,6 +10,7 @@ import {
   Target,
   Sparkle,
   Warning,
+  CaretRight,
 } from "@phosphor-icons/react";
 import { TopBar } from "@/components/TopBar";
 import { TrendChart } from "@/components/TrendChart";
@@ -17,12 +18,12 @@ import { MagneticButton } from "@/components/MagneticButton";
 import { api } from "@/lib/api";
 import { getCandidateId } from "@/lib/identity";
 import { summarizeMemory, type MemorySummary } from "@/lib/memoryStats";
-import type { MemoryProfile } from "@/types/contracts";
+import type { MemoryProfile, SessionSummary } from "@/types/contracts";
 
 type LoadState =
   | { phase: "loading" }
   | { phase: "error"; message: string }
-  | { phase: "ready"; profile: MemoryProfile; summary: MemorySummary };
+  | { phase: "ready"; profile: MemoryProfile; summary: MemorySummary; sessions: SessionSummary[] };
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -32,9 +33,14 @@ export function Dashboard() {
     let cancelled = false;
     (async () => {
       try {
-        const profile = await api.getMemory(getCandidateId());
+        const cid = getCandidateId();
+        // Sessions are secondary — if that call fails, still show progress.
+        const [profile, sessions] = await Promise.all([
+          api.getMemory(cid),
+          api.listSessions(cid).catch(() => [] as SessionSummary[]),
+        ]);
         if (cancelled) return;
-        setState({ phase: "ready", profile, summary: summarizeMemory(profile) });
+        setState({ phase: "ready", profile, summary: summarizeMemory(profile), sessions });
       } catch (e) {
         if (cancelled) return;
         setState({
@@ -63,7 +69,9 @@ export function Dashboard() {
           <Populated
             profile={state.profile}
             summary={state.summary}
+            sessions={state.sessions}
             onStart={() => navigate("/setup")}
+            onOpenSession={(sid) => navigate(`/session/${sid}`)}
           />
         )}
       </main>
@@ -74,11 +82,15 @@ export function Dashboard() {
 function Populated({
   profile,
   summary,
+  sessions,
   onStart,
+  onOpenSession,
 }: {
   profile: MemoryProfile;
   summary: MemorySummary;
+  sessions: SessionSummary[];
   onStart: () => void;
+  onOpenSession: (sessionId: string) => void;
 }) {
   const { sessionsCompleted, latestAvg, delta, trend, topWeaknesses, strongAreas } = summary;
   const targets = topWeaknesses.slice(0, 3).map((w) => w.tag);
@@ -179,6 +191,25 @@ function Populated({
         </div>
       </section>
 
+      {/* past sessions */}
+      {sessions.length > 0 && (
+        <section>
+          <h2 className="mb-4 font-display text-lg font-semibold tracking-tight text-chalk">
+            Past sessions
+          </h2>
+          <div className="overflow-hidden rounded-2xl border border-line divide-y divide-line">
+            {sessions.map((s, i) => (
+              <SessionRow
+                key={s.sessionId}
+                session={s}
+                index={i}
+                onClick={() => onOpenSession(s.sessionId)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* next-session CTA */}
       <section className="flex flex-col items-center gap-5 rounded-3xl border border-line bg-ink p-10 text-center">
         {targets.length > 0 && (
@@ -206,6 +237,55 @@ function Populated({
         </MagneticButton>
       </section>
     </div>
+  );
+}
+
+const MODE_LABEL: Record<string, string> = {
+  full: "Full Mock",
+  behavioral: "Behavioral",
+  technical: "Technical",
+  system_design: "System Design",
+};
+
+function SessionRow({
+  session,
+  index,
+  onClick,
+}: {
+  session: SessionSummary;
+  index: number;
+  onClick: () => void;
+}) {
+  const ratio = session.total > 0 ? session.survived / session.total : 0;
+  const tone =
+    ratio >= 0.6 ? "var(--color-survive)" : ratio >= 0.34 ? "var(--color-accent)" : "var(--color-fail)";
+  const dateLabel = new Date(session.date).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.03 * index }}
+      onClick={onClick}
+      className="group flex w-full items-center gap-4 bg-ink px-4 py-3.5 text-left transition-colors hover:bg-surface"
+    >
+      <span className="w-14 shrink-0 font-mono text-xs text-fog">{dateLabel}</span>
+      <span className="font-display text-sm font-semibold tracking-tight text-chalk">
+        {MODE_LABEL[session.mode] ?? session.mode}
+      </span>
+      <span className="font-mono text-[11px] capitalize text-fog">{session.level}</span>
+      <span className="ml-auto font-mono text-sm font-bold tabular-nums" style={{ color: tone }}>
+        {session.survived}/{session.total}
+      </span>
+      <CaretRight
+        size={14}
+        weight="bold"
+        className="text-fog transition-transform group-hover:translate-x-0.5 group-hover:text-chalk"
+      />
+    </motion.button>
   );
 }
 

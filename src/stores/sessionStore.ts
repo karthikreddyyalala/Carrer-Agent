@@ -30,6 +30,8 @@ export type SessionStatus = "idle" | "starting" | "live" | "thinking" | "wrappin
 interface SessionState {
   status: SessionStatus;
   role: string;
+  mode: InterviewMode;
+  level: InterviewLevel;
   profile: IntakeProfile | null;
   plan: QuestionPlan | null;
   currentIdx: number;
@@ -97,6 +99,8 @@ export const useSessionStore = create<SessionState>()(
     (set, get) => ({
       status: "idle",
       role: "sde",
+      mode: "full",
+      level: "mid",
       profile: null,
       plan: null,
       currentIdx: 0,
@@ -114,7 +118,7 @@ export const useSessionStore = create<SessionState>()(
       },
 
       start: async ({ resumeText, jdText, role, mode, level }) => {
-        set({ status: "starting", role, messages: [], evaluations: [], updatedMemory: null });
+        set({ status: "starting", role, mode, level, messages: [], evaluations: [], updatedMemory: null });
         try {
         const candidateId = getCandidateId();
         const prior = await api.getMemory(candidateId);
@@ -239,6 +243,10 @@ export const useSessionStore = create<SessionState>()(
           const updated = await api.finalizeSession({
             candidateId: getCandidateId(),
             evaluations: evals,
+            sessionId: state.plan!.sessionId,
+            mode: state.mode,
+            level: state.level,
+            questions: state.plan!.questions,
           });
           set({ status: "complete", evaluations: evals, updatedMemory: updated });
           return;
@@ -296,6 +304,8 @@ export const useSessionStore = create<SessionState>()(
           : s.status === "wrapping" ? "complete"
           : s.status,
         role: s.role,
+        mode: s.mode,
+        level: s.level,
         profile: s.profile,
         plan: s.plan,
         currentIdx: s.currentIdx,

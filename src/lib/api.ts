@@ -13,12 +13,15 @@ import type {
   MemoryProfile,
   PlannedQuestion,
   QuestionPlan,
+  SessionRecord,
+  SessionSummary,
 } from "@/types/contracts";
 import { mockEngine } from "./mockEngine";
 import { authApi } from "./auth";
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
 const MOCK_MEMORY_KEY = "crucible.memory.v1";
+const MOCK_SESSIONS_KEY = "crucible.sessions.v1";
 
 // Attaches the Cognito ID token so the backend can verify the user and derive
 // their candidate id from the token's sub.
@@ -74,6 +77,42 @@ function writeMockMemory(profile: MemoryProfile): void {
 
 function emptyMemory(candidateId: string): MemoryProfile {
   return { candidateId, recurringWeaknesses: [], improvementTrend: [], strongAreas: [] };
+}
+
+// Mock-mode session history: a candidate-keyed map of full records in localStorage.
+function readMockSessions(candidateId: string): Record<string, SessionRecord> {
+  try {
+    const raw = localStorage.getItem(MOCK_SESSIONS_KEY);
+    if (!raw) return {};
+    const all = JSON.parse(raw) as Record<string, Record<string, SessionRecord>>;
+    return all[candidateId] ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function writeMockSession(record: SessionRecord): void {
+  try {
+    const raw = localStorage.getItem(MOCK_SESSIONS_KEY);
+    const all = raw ? (JSON.parse(raw) as Record<string, Record<string, SessionRecord>>) : {};
+    const forCandidate = all[record.candidateId] ?? {};
+    forCandidate[record.sessionId] = record;
+    all[record.candidateId] = forCandidate;
+    localStorage.setItem(MOCK_SESSIONS_KEY, JSON.stringify(all));
+  } catch {
+    /* storage unavailable — non-fatal */
+  }
+}
+
+function summarize(r: SessionRecord): SessionSummary {
+  return {
+    sessionId: r.sessionId,
+    date: r.date,
+    mode: r.mode,
+    level: r.level,
+    survived: r.evaluations.filter((e) => e.wouldSurviveRealInterview).length,
+    total: r.evaluations.length,
+  };
 }
 
 export interface StartSessionResult {
@@ -138,6 +177,10 @@ export const api = {
   async finalizeSession(input: {
     candidateId: string;
     evaluations: AnswerEvaluation[];
+    sessionId: string;
+    mode: InterviewMode;
+    level: InterviewLevel;
+    questions: PlannedQuestion[];
   }): Promise<MemoryProfile> {
     if (USE_MOCK) {
       await latency(900);
@@ -146,6 +189,15 @@ export const api = {
       const updated = mockEngine.aggregate(input.evaluations, today, prior);
       updated.candidateId = input.candidateId;
       writeMockMemory(updated);
+      writeMockSession({
+        sessionId: input.sessionId,
+        candidateId: input.candidateId,
+        date: today,
+        mode: input.mode,
+        level: input.level,
+        questions: input.questions,
+        evaluations: input.evaluations,
+      });
       return updated;
     }
     const res = await safeFetch(apiUrl("/api/session/finalize"), {
@@ -153,6 +205,32 @@ export const api = {
       headers: await authHeaders(),
       body: JSON.stringify(input),
     });
+    return res.json();
+  },
+
+  async listSessions(candidateId: string): Promise<SessionSummary[]> {
+    if (USE_MOCK) {
+      await latency(300);
+      return Object.values(readMockSessions(candidateId))
+        .map(summarize)
+        .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    }
+    const res = await safeFetch(apiUrl("/api/sessions"), {
+      headers: await authHeaders(false),
+    });
+    return res.json();
+  },
+
+  async getSession(candidateId: string, sessionId: string): Promise<SessionRecord | null> {
+    if (USE_MOCK) {
+      await latency(300);
+      return readMockSessions(candidateId)[sessionId] ?? null;
+    }
+    const res = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(sessionId)}`), {
+      headers: await authHeaders(false),
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Request failed (${res.status})`);
     return res.json();
   },
 };

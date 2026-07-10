@@ -4,6 +4,7 @@ import { RequireAuth } from "./components/RequireAuth";
 import { Landing } from "./pages/Landing";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
+import { SessionReview } from "./pages/SessionReview";
 import { Setup } from "./pages/Setup";
 import { Interview } from "./pages/Interview";
 import { Results } from "./pages/Results";
@@ -22,6 +23,14 @@ export function App() {
           element={
             <RequireAuth>
               <Dashboard />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/session/:id"
+          element={
+            <RequireAuth>
+              <SessionReview />
             </RequireAuth>
           }
         />
