@@ -15,9 +15,11 @@ import {
 import { TopBar } from "@/components/TopBar";
 import { TypeChip, DifficultyMeter, WeightedTag } from "@/components/QuestionMeta";
 import { InterviewerAvatar, type AvatarState } from "@/components/InterviewerAvatar";
+import { TavusAvatar } from "@/components/TavusAvatar";
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useKokoroTTS } from "@/hooks/useKokoroTTS";
+import { useTavus } from "@/hooks/useTavus";
 import { useSessionStore } from "@/stores/sessionStore";
 
 export function Interview() {
@@ -44,6 +46,11 @@ export function Interview() {
   const webSpeech = useSpeechSynthesis();
   const stt = useSpeechRecognition();
 
+  // Optional Tavus video avatar. Dormant unless the backend has a key; when it
+  // becomes ready it takes over both the face and the voice (it speaks the
+  // lines itself), so we skip Kokoro to avoid doubled audio.
+  const tavus = useTavus();
+
   // Route to Kokoro when ready, otherwise fall back to Web Speech API.
   const tts = kokoro.status === "ready"
     ? { speak: kokoro.speak, cancel: kokoro.cancel, speaking: kokoro.speaking, supported: true as const }
@@ -53,15 +60,17 @@ export function Interview() {
   const [voiceOn, setVoiceOn] = useState(false);
   const lastSpokenId = useRef<string | null>(null);
 
-  // Speak each new interviewer message aloud when voice is on.
+  // Speak each new interviewer message aloud when voice is on. The video avatar
+  // wins when it's live; otherwise the stylized avatar + Kokoro/Web Speech does.
   useEffect(() => {
-    if (!voiceOn || !tts.supported) return;
+    if (!voiceOn) return;
     const last = messages[messages.length - 1];
     if (!last || last.speaker !== "interviewer") return;
     if (lastSpokenId.current === last.id) return;
     lastSpokenId.current = last.id;
-    tts.speak(last.text);
-  }, [messages, voiceOn, tts]);
+    if (tavus.ready) tavus.speak(last.text);
+    else if (tts.supported) tts.speak(last.text);
+  }, [messages, voiceOn, tts, tavus]);
 
   // While dictating, mirror the live transcript into the draft.
   useEffect(() => {
@@ -118,11 +127,12 @@ export function Interview() {
   const toggleVoice = () => {
     const next = !voiceOn;
     setVoiceOn(next);
-    if (next && kokoro.status === "idle") {
-      kokoro.load(); // start downloading the model in the background
-    }
-    if (!next) {
+    if (next) {
+      if (kokoro.status === "idle") kokoro.load(); // download the model in the background
+      tavus.activate(); // no-op unless Tavus is configured server-side
+    } else {
       tts.cancel();
+      tavus.deactivate();
       if (stt.listening) stt.stop();
     }
   };
@@ -195,7 +205,12 @@ export function Interview() {
       {/* current question header */}
       <div className="border-b border-line bg-ink/50">
         <div className="mx-auto flex max-w-[820px] items-center gap-4 px-5 py-5 sm:px-8">
-          {voiceOn && <InterviewerAvatar state={avatarState} size={72} />}
+          {voiceOn &&
+            (tavus.ready ? (
+              <TavusAvatar track={tavus.videoTrack} speaking={tavus.speaking} size={72} />
+            ) : (
+              <InterviewerAvatar state={avatarState} size={72} />
+            ))}
           <div className="flex flex-1 flex-wrap items-center gap-3">
             <TypeChip type={question.type} />
             <DifficultyMeter value={question.targetDifficulty} />

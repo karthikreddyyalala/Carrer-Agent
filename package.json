@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@daily-co/daily-js": "^0.91.0",
     "@phosphor-icons/react": "^2.1.7",
     "@sentry/react": "^10.63.0",
     "aws-amplify": "^6.18.0",

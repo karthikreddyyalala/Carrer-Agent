@@ -76,6 +76,12 @@ export interface CoachResponse {
   improvements: string[];
 }
 
+export interface AvatarSessionResponse {
+  enabled: boolean;
+  conversationUrl: string | null;
+  conversationId: string | null;
+}
+
 export interface SessionSummary {
   sessionId: string;
   date: string;

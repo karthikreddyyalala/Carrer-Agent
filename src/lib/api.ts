@@ -6,6 +6,7 @@
 
 import type {
   AnswerEvaluation,
+  AvatarSessionResponse,
   CoachResponse,
   IntakeProfile,
   InterviewDecision,
@@ -188,6 +189,19 @@ export const api = {
       method: "POST",
       headers: await authHeaders(),
       body: JSON.stringify(input),
+    });
+    return res.json();
+  },
+
+  // Asks the backend to spin up a Tavus video conversation. Returns enabled:false
+  // when Tavus isn't configured (the default) so the UI keeps the stylized avatar.
+  async avatarSession(): Promise<AvatarSessionResponse> {
+    if (USE_MOCK) {
+      return { enabled: false, conversationUrl: null, conversationId: null };
+    }
+    const res = await safeFetch(apiUrl("/api/avatar/session"), {
+      method: "POST",
+      headers: await authHeaders(),
     });
     return res.json();
   },
