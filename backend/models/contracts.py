@@ -52,6 +52,13 @@ class CoachResponse(_Base):
     improvements: list[str]  # 2-3 short "what changed / why this works" notes
 
 
+class AvatarSessionResponse(_Base):
+    """Tells the browser whether the video avatar is on and, if so, where to join."""
+    enabled: bool
+    conversation_url: str | None = None
+    conversation_id: str | None = None
+
+
 class RecurringWeakness(_Base):
     tag: str
     frequency: int

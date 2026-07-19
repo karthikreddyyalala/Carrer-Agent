@@ -31,12 +31,22 @@ def _build_store(settings: Settings) -> MemoryStore:
     return InMemoryStore()
 
 
+def _build_tavus(settings: Settings):
+    if not settings.tavus_enabled:
+        return None
+    from llm.tavus import TavusClient
+
+    return TavusClient(api_key=settings.tavus_api_key, base_url=settings.tavus_base_url)
+
+
 def create_app(
-    *, llm=None, settings: Settings | None = None, store: MemoryStore | None = None
+    *, llm=None, settings: Settings | None = None, store: MemoryStore | None = None,
+    tavus_client=None,
 ) -> FastAPI:
     settings = settings or Settings()
     llm = llm if llm is not None else LLMClient(region=settings.aws_region)
     store = store if store is not None else _build_store(settings)
+    tavus_client = tavus_client if tavus_client is not None else _build_tavus(settings)
 
     app = FastAPI(title="Crucible API", version="0.1.0")
 
@@ -68,7 +78,9 @@ def create_app(
             },
         )
 
-    app.include_router(build_session_router(llm=llm, settings=settings, store=store))
+    app.include_router(
+        build_session_router(llm=llm, settings=settings, store=store, tavus_client=tavus_client)
+    )
     return app
 
 

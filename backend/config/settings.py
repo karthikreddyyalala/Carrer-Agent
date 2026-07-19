@@ -40,6 +40,19 @@ class Settings(BaseSettings):
 
     run_llm_evals: bool = False
 
+    # Tavus video avatar (optional, off by default). The API key is a paid
+    # credential and stays server-side — the browser only ever receives the
+    # ephemeral conversation URL. Leave tavus_api_key empty to disable; the
+    # avatar endpoint then reports disabled and the UI keeps the stylized avatar.
+    tavus_api_key: str = ""
+    tavus_replica_id: str = ""
+    tavus_persona_id: str = ""
+    tavus_base_url: str = "https://tavusapi.com"
+
+    @property
+    def tavus_enabled(self) -> bool:
+        return bool(self.tavus_api_key and self.tavus_replica_id)
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

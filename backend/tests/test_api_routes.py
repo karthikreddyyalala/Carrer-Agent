@@ -394,3 +394,39 @@ def test_coach_works_without_weakness_tags():
     )
     assert res.status_code == 200
     assert res.json()["modelAnswer"]
+
+
+# --- tavus avatar session --------------------------------------------------
+
+class _FakeTavus:
+    def __init__(self):
+        self.calls = 0
+
+    def create_conversation(self, *, replica_id, persona_id="", conversation_name="Crucible interview"):
+        self.calls += 1
+        from llm.tavus import TavusResult
+        return TavusResult(conversation_id="conv-123", conversation_url="https://tavus.daily.co/room-abc")
+
+
+def test_avatar_session_disabled_by_default():
+    # No Tavus key configured -> endpoint reports disabled, UI falls back.
+    client = _client({})
+    res = client.post("/api/avatar/session")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["enabled"] is False
+    assert body["conversationUrl"] is None
+
+
+def test_avatar_session_returns_url_when_enabled():
+    from config.settings import Settings
+    settings = Settings(tavus_api_key="k", tavus_replica_id="r")
+    app = create_app(
+        llm=_FakeLLM({}), store=InMemoryStore(), settings=settings, tavus_client=_FakeTavus()
+    )
+    client = TestClient(app)
+    res = client.post("/api/avatar/session")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["enabled"] is True
+    assert body["conversationUrl"] == "https://tavus.daily.co/room-abc"

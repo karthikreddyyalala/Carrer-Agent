@@ -11,6 +11,7 @@ from auth import current_sub
 from config.settings import Settings
 from models.contracts import (
     AnswerEvaluation,
+    AvatarSessionResponse,
     CoachResponse,
     IntakeProfile,
     InterviewDecision,
@@ -84,7 +85,7 @@ def _empty_memory(candidate_id: str) -> MemoryProfile:
     )
 
 
-def build_session_router(*, llm, settings: Settings, store: MemoryStore) -> APIRouter:
+def build_session_router(*, llm, settings: Settings, store: MemoryStore, tavus_client=None) -> APIRouter:
     router = APIRouter(prefix="/api")
 
     start_graph = build_session_start_graph(
@@ -151,6 +152,23 @@ def build_session_router(*, llm, settings: Settings, store: MemoryStore) -> APIR
             question=req.question,
             transcript=req.transcript,
             weakness_tags=req.weakness_tags,
+        )
+
+    @router.post("/avatar/session")
+    def avatar_session(_sub: str | None = Depends(current_sub)) -> AvatarSessionResponse:
+        # Creates a Tavus video conversation and returns only the ephemeral room
+        # URL (the API key stays here). When Tavus isn't configured, reports
+        # disabled so the UI keeps the stylized avatar — zero impact when off.
+        if tavus_client is None:
+            return AvatarSessionResponse(enabled=False, conversation_url=None)
+        result = tavus_client.create_conversation(
+            replica_id=settings.tavus_replica_id,
+            persona_id=settings.tavus_persona_id,
+        )
+        return AvatarSessionResponse(
+            enabled=True,
+            conversation_url=result.conversation_url,
+            conversation_id=result.conversation_id,
         )
 
     @router.post("/session/finalize")
