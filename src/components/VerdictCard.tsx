@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { CheckCircle, WarningOctagon, CaretDown } from "@phosphor-icons/react";
-import type { AnswerEvaluation, PlannedQuestion } from "@/types/contracts";
+import { CheckCircle, WarningOctagon, CaretDown, Sparkle, ArrowClockwise } from "@phosphor-icons/react";
+import type { AnswerEvaluation, CoachResponse, PlannedQuestion } from "@/types/contracts";
+import { api } from "@/lib/api";
 import { RubricBar } from "./RubricBar";
 import { TypeChip } from "./QuestionMeta";
 
@@ -41,9 +42,17 @@ export function VerdictCard({ evaluation, question, index }: VerdictCardProps) {
   const survives = evaluation.wouldSurviveRealInterview;
   const tone = survives ? "var(--color-survive)" : "var(--color-fail)";
   const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [tab, setTab] = useState<"yours" | "model">("yours");
+  // The coach panel only mounts (and fetches) once the user asks for it.
+  const [modelRequested, setModelRequested] = useState(false);
 
   const parsed = parseTranscript(evaluation.transcript);
   const hasTranscript = evaluation.transcript.trim().length > 0;
+
+  const showModel = () => {
+    setTab("model");
+    setModelRequested(true);
+  };
 
   return (
     <motion.article
@@ -85,7 +94,7 @@ export function VerdictCard({ evaluation, question, index }: VerdictCardProps) {
 
       <p className="mt-4 text-[15px] leading-relaxed text-chalk">{question.prompt}</p>
 
-      {/* collapsible transcript */}
+      {/* answer panel: your attempt <-> a model 5/5 answer */}
       {hasTranscript && (
         <div className="mt-5">
           <button
@@ -98,50 +107,71 @@ export function VerdictCard({ evaluation, question, index }: VerdictCardProps) {
             >
               <CaretDown size={11} weight="bold" />
             </motion.span>
-            {transcriptOpen ? "HIDE YOUR ANSWER" : "VIEW YOUR ANSWER"}
-            {evaluation.followUpCount > 0 && (
-              <span className="ml-1 text-accent">
-                · {evaluation.followUpCount} follow-up{evaluation.followUpCount > 1 ? "s" : ""}
-              </span>
+            {transcriptOpen ? "HIDE ANSWER" : "REVIEW YOUR ANSWER"}
+            {!survives && !transcriptOpen && (
+              <span className="ml-1 text-accent">· see a 5/5 version</span>
             )}
           </button>
 
           <AnimatePresence initial={false}>
             {transcriptOpen && (
               <motion.div
-                key="transcript"
+                key="panel"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
                 className="overflow-hidden"
               >
-                <div className="mt-3 rounded-2xl border border-line bg-surface p-4 space-y-3">
-                  {parsed ? (
-                    parsed.map((entry, i) => (
-                      <div key={i} className="flex gap-3">
-                        <span
-                          className={`shrink-0 font-mono text-[11px] font-bold tracking-wider pt-0.5 ${
-                            entry.role === "Q" ? "text-accent" : "text-fog"
-                          }`}
-                        >
-                          {entry.role}
-                        </span>
-                        <p
-                          className={`text-sm leading-relaxed ${
-                            entry.role === "Q" ? "text-mist" : "text-chalk"
-                          }`}
-                        >
-                          {entry.text}
-                        </p>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm leading-relaxed text-chalk">
-                      {evaluation.transcript}
-                    </p>
-                  )}
+                {/* the switch */}
+                <div className="mt-3 inline-flex rounded-xl border border-line bg-ink p-1">
+                  <TabButton active={tab === "yours"} onClick={() => setTab("yours")}>
+                    Your answer
+                  </TabButton>
+                  <TabButton active={tab === "model"} onClick={showModel}>
+                    <Sparkle size={12} weight="fill" />
+                    What a 5/5 sounds like
+                  </TabButton>
                 </div>
+
+                {/* your answer */}
+                <div className={tab === "yours" ? "block" : "hidden"}>
+                  <div className="mt-3 rounded-2xl border border-line bg-surface p-4 space-y-3">
+                    {parsed ? (
+                      parsed.map((entry, i) => (
+                        <div key={i} className="flex gap-3">
+                          <span
+                            className={`shrink-0 font-mono text-[11px] font-bold tracking-wider pt-0.5 ${
+                              entry.role === "Q" ? "text-accent" : "text-fog"
+                            }`}
+                          >
+                            {entry.role}
+                          </span>
+                          <p
+                            className={`text-sm leading-relaxed ${
+                              entry.role === "Q" ? "text-mist" : "text-chalk"
+                            }`}
+                          >
+                            {entry.text}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm leading-relaxed text-chalk">{evaluation.transcript}</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* model answer — mounts once, on first request, then caches */}
+                {modelRequested && (
+                  <div className={tab === "model" ? "block" : "hidden"}>
+                    <CoachPanel
+                      question={question}
+                      transcript={evaluation.transcript}
+                      weaknessTags={evaluation.weaknessTags}
+                    />
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -174,5 +204,109 @@ export function VerdictCard({ evaluation, question, index }: VerdictCardProps) {
         </div>
       )}
     </motion.article>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[11px] tracking-wide tactile transition-colors ${
+        active ? "bg-accent text-void" : "text-fog hover:text-chalk"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+type CoachState =
+  | { phase: "loading" }
+  | { phase: "error" }
+  | { phase: "ready"; data: CoachResponse };
+
+// Isolated so its fetch/loading lives on its own and only runs when the user
+// asks to see the model answer. Mounts once, caches the result.
+function CoachPanel({
+  question,
+  transcript,
+  weaknessTags,
+}: {
+  question: PlannedQuestion;
+  transcript: string;
+  weaknessTags: string[];
+}) {
+  const [state, setState] = useState<CoachState>({ phase: "loading" });
+
+  const load = () => {
+    setState({ phase: "loading" });
+    let cancelled = false;
+    api
+      .coachAnswer({ question, transcript, weaknessTags })
+      .then((data) => !cancelled && setState({ phase: "ready", data }))
+      .catch(() => !cancelled && setState({ phase: "error" }));
+    return () => {
+      cancelled = true;
+    };
+  };
+
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="mt-3 rounded-2xl border border-accent/30 bg-accent/[0.05] p-4">
+      {state.phase === "loading" && (
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-2 font-mono text-[11px] tracking-wide text-accent">
+            <span className="inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+            REWORKING YOUR ANSWER INTO A 5/5…
+          </div>
+          <div className="h-3 w-full animate-pulse rounded bg-surface-2" />
+          <div className="h-3 w-[92%] animate-pulse rounded bg-surface-2" />
+          <div className="h-3 w-[80%] animate-pulse rounded bg-surface-2" />
+        </div>
+      )}
+
+      {state.phase === "error" && (
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-fog">Couldn't generate a model answer.</span>
+          <button
+            onClick={load}
+            className="inline-flex items-center gap-1.5 font-mono text-[11px] text-accent transition-opacity hover:opacity-70"
+          >
+            <ArrowClockwise size={12} weight="bold" />
+            RETRY
+          </button>
+        </div>
+      )}
+
+      {state.phase === "ready" && (
+        <div>
+          <p className="text-[15px] leading-relaxed text-chalk">{state.data.modelAnswer}</p>
+          {state.data.improvements.length > 0 && (
+            <div className="mt-4 border-t border-accent/20 pt-3">
+              <p className="mb-2 font-mono text-[10px] tracking-[0.16em] text-accent">
+                WHAT CHANGED
+              </p>
+              <ul className="space-y-1.5">
+                {state.data.improvements.map((imp, i) => (
+                  <li key={i} className="flex gap-2 text-sm leading-relaxed text-mist">
+                    <Sparkle size={13} weight="fill" className="mt-1 shrink-0 text-accent" />
+                    <span>{imp}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

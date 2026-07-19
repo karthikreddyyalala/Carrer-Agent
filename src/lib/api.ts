@@ -6,6 +6,7 @@
 
 import type {
   AnswerEvaluation,
+  CoachResponse,
   IntakeProfile,
   InterviewDecision,
   InterviewLevel,
@@ -167,6 +168,23 @@ export const api = {
       return mockEngine.decide(input.question, input.answer, input.followUpCount, input.isLast);
     }
     const res = await safeFetch(apiUrl("/api/session/turn"), {
+      method: "POST",
+      headers: await authHeaders(),
+      body: JSON.stringify(input),
+    });
+    return res.json();
+  },
+
+  async coachAnswer(input: {
+    question: PlannedQuestion;
+    transcript: string;
+    weaknessTags: string[];
+  }): Promise<CoachResponse> {
+    if (USE_MOCK) {
+      await latency(1200);
+      return mockEngine.coach(input.question, input.weaknessTags);
+    }
+    const res = await safeFetch(apiUrl("/api/coach"), {
       method: "POST",
       headers: await authHeaders(),
       body: JSON.stringify(input),

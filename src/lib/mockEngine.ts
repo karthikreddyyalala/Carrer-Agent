@@ -5,6 +5,7 @@
 
 import type {
   AnswerEvaluation,
+  CoachResponse,
   IntakeProfile,
   InterviewDecision,
   MemoryProfile,
@@ -308,6 +309,32 @@ export const mockEngine = {
       recurringWeaknesses: [...weaknessMap.values()].sort((a, b) => b.frequency - a.frequency),
       improvementTrend: [...(prior?.improvementTrend ?? []), { sessionDate, avgScore: avg }],
       strongAreas: [...strong],
+    };
+  },
+
+  coach(question: PlannedQuestion, weaknessTags: string[]): CoachResponse {
+    const frame =
+      question.type === "behavioral"
+        ? "Open with the Situation and your specific Task, walk through the Actions you personally took, and close with a quantified Result."
+        : question.type === "system_design"
+        ? "Clarify the requirements and scale first, sketch the high-level components, then go deep on one — naming the tradeoffs and failure modes explicitly."
+        : "State the core approach and why it's correct, explain the key decision, then name the edge cases and how you'd handle them.";
+
+    const improvements = [
+      `Restructures the answer so it directly targets: ${
+        weaknessTags.length ? weaknessTags.join(", ") : "clarity and specificity"
+      }.`,
+      "Replaces vague phrasing with a concrete, quantified outcome.",
+      "Foregrounds your own decisions and reasoning so ownership is unmistakable.",
+    ];
+
+    return {
+      modelAnswer:
+        `A 5/5 version of your answer would keep your real example but tell it tighter. ${frame} ` +
+        `Ground every claim in a specific number or decision you made, and end on the measurable impact — ` +
+        `that's the difference between "it got better" and an answer an interviewer trusts. ` +
+        `(This is a local preview; connect the backend to generate a fully personalized model answer.)`,
+      improvements,
     };
   },
 };

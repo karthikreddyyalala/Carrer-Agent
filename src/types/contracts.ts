@@ -71,6 +71,11 @@ export interface MemoryProfile {
   strongAreas: string[];
 }
 
+export interface CoachResponse {
+  modelAnswer: string;
+  improvements: string[];
+}
+
 export interface SessionSummary {
   sessionId: string;
   date: string;
