@@ -11,11 +11,13 @@ import {
   SpeakerSlash,
   Warning,
   ArrowClockwise,
+  ArrowsOut,
 } from "@phosphor-icons/react";
 import { TopBar } from "@/components/TopBar";
 import { TypeChip, DifficultyMeter, WeightedTag } from "@/components/QuestionMeta";
 import { InterviewerAvatar, type AvatarState } from "@/components/InterviewerAvatar";
 import { TavusAvatar } from "@/components/TavusAvatar";
+import { TavusCallOverlay } from "@/components/TavusCallOverlay";
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useKokoroTTS } from "@/hooks/useKokoroTTS";
@@ -58,6 +60,7 @@ export function Interview() {
 
   const voiceCapable = webSpeech.supported || stt.supported;
   const [voiceOn, setVoiceOn] = useState(false);
+  const [callOpen, setCallOpen] = useState(false);
   const lastSpokenId = useRef<string | null>(null);
 
   // Speak each new interviewer message aloud when voice is on. The video avatar
@@ -109,6 +112,13 @@ export function Interview() {
     const t = setTimeout(() => setSlowThinking(true), 6000);
     return () => clearTimeout(t);
   }, [status]);
+
+  // Drop out of the full-screen call if voice/video goes away or the session ends.
+  useEffect(() => {
+    if (!voiceOn || !tavus.ready || status === "wrapping" || status === "complete") {
+      setCallOpen(false);
+    }
+  }, [voiceOn, tavus.ready, status]);
 
   if (!plan) return null;
 
@@ -207,7 +217,16 @@ export function Interview() {
         <div className="mx-auto flex max-w-[820px] items-center gap-4 px-5 py-5 sm:px-8">
           {voiceOn &&
             (tavus.ready ? (
-              <TavusAvatar track={tavus.videoTrack} speaking={tavus.speaking} size={72} />
+              <button
+                onClick={() => setCallOpen(true)}
+                className="group relative shrink-0 rounded-2xl"
+                title="Expand to full-screen call"
+              >
+                <TavusAvatar track={tavus.videoTrack} speaking={tavus.speaking} size={72} />
+                <span className="absolute inset-0 grid place-items-center rounded-2xl bg-void/50 opacity-0 transition-opacity group-hover:opacity-100">
+                  <ArrowsOut size={20} weight="bold" className="text-white-pure" />
+                </span>
+              </button>
             ) : (
               <InterviewerAvatar state={avatarState} size={72} />
             ))}
@@ -385,6 +404,26 @@ export function Interview() {
           </p>
         </div>
       </div>
+
+      <AnimatePresence>
+        {callOpen && tavus.ready && (
+          <TavusCallOverlay
+            videoTrack={tavus.videoTrack}
+            speaking={tavus.speaking}
+            questionText={question.prompt}
+            listening={stt.listening}
+            draft={draft}
+            thinking={thinking}
+            sttSupported={stt.supported}
+            followUpLabel={
+              followUpCount > 0 ? `PUSHING BACK · FOLLOW-UP ${followUpCount}/2` : undefined
+            }
+            onToggleMic={toggleMic}
+            onSend={send}
+            onClose={() => setCallOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

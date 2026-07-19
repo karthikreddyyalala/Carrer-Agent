@@ -20,6 +20,7 @@ export function useTavus() {
 
   const callRef = useRef<any>(null);
   const conversationIdRef = useRef<string | null>(null);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
 
   const activate = useCallback(async () => {
     if (status !== "idle") return;
@@ -37,10 +38,18 @@ export function useTavus() {
       const call = Daily.createCallObject({ subscribeToTracksAutomatically: true });
       callRef.current = call;
 
-      // The replica joins as a participant; grab its video track to render.
+      // With createCallObject() nothing plays automatically — we render the
+      // replica's video ourselves AND must play its audio ourselves, or it's
+      // silent. Grab both tracks; audio goes straight to an <audio> sink.
       const onTrack = (ev: any) => {
-        if (ev?.track?.kind === "video" && !ev.participant?.local) {
+        if (ev.participant?.local) return;
+        if (ev?.track?.kind === "video") {
           setVideoTrack(ev.track as MediaStreamTrack);
+        } else if (ev?.track?.kind === "audio") {
+          const el = (audioElRef.current ??= new Audio());
+          el.srcObject = new MediaStream([ev.track]);
+          el.autoplay = true;
+          void el.play().catch(() => {/* gesture already granted via VOICE */});
         }
       };
       // Mirror the avatar's speaking state onto the UI for lip-sync cues.
@@ -52,7 +61,9 @@ export function useTavus() {
       call.on("track-started", onTrack);
       call.on("app-message", onAppMessage);
 
-      await call.join({ url: session.conversationUrl });
+      // We only RECEIVE from Tavus (echo mode). Don't publish our cam/mic into
+      // the room — the candidate's answers reach the agents via our own STT.
+      await call.join({ url: session.conversationUrl, startVideoOff: true, startAudioOff: true });
       setStatus("ready");
     } catch (err) {
       console.error("[useTavus] activation failed:", err);
@@ -85,6 +96,11 @@ export function useTavus() {
       } catch {
         /* already torn down */
       }
+    }
+    if (audioElRef.current) {
+      audioElRef.current.pause();
+      audioElRef.current.srcObject = null;
+      audioElRef.current = null;
     }
     callRef.current = null;
     conversationIdRef.current = null;

@@ -38,13 +38,9 @@ export function TavusAvatar({
       }
       transition={{ duration: 0.25 }}
     >
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted={false}
-        className="h-full w-full object-cover"
-      />
+      {/* Muted: the replica's audio is played by useTavus's audio sink, so
+          playing it here too would double it. */}
+      <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
     </motion.div>
   );
 }
