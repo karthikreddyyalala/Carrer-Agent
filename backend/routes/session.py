@@ -11,6 +11,7 @@ from auth import current_sub
 from config.settings import Settings
 from models.contracts import (
     AnswerEvaluation,
+    CoachResponse,
     IntakeProfile,
     InterviewDecision,
     MemoryProfile,
@@ -19,6 +20,7 @@ from models.contracts import (
     SessionRecord,
     SessionSummary,
 )
+from agents.coach import CoachAgent
 from agents.evaluator import EvaluatorAgent
 from agents.interviewer import InterviewerAgent
 from agents.memory import MemoryAgent
@@ -67,6 +69,12 @@ class FinalizeRequest(_Base):
     questions: list[PlannedQuestion] = []
 
 
+class CoachRequest(_Base):
+    question: PlannedQuestion
+    transcript: str
+    weakness_tags: list[str] = []
+
+
 def _empty_memory(candidate_id: str) -> MemoryProfile:
     return MemoryProfile(
         candidate_id=candidate_id,
@@ -87,6 +95,7 @@ def build_session_router(*, llm, settings: Settings, store: MemoryStore) -> APIR
     interviewer = InterviewerAgent(llm=llm, model=settings.interviewer_model)
     evaluator = EvaluatorAgent(llm=llm, model=settings.evaluator_model)
     memory_agent = MemoryAgent(llm=llm, model=settings.memory_model)
+    coach = CoachAgent(llm=llm, model=settings.coach_model)
 
     @router.get("/health")
     def health() -> dict[str, str]:
@@ -133,6 +142,16 @@ def build_session_router(*, llm, settings: Settings, store: MemoryStore) -> APIR
             follow_up_count=req.follow_up_count,
         )
         return TurnResponse(decision=decision, evaluation=evaluation)
+
+    @router.post("/coach")
+    def coach_answer(req: CoachRequest, _sub: str | None = Depends(current_sub)) -> CoachResponse:
+        # On-demand: reworks the candidate's own attempt into a model 5/5 answer.
+        # Generated only when the user asks to see it, never during the interview.
+        return coach.run(
+            question=req.question,
+            transcript=req.transcript,
+            weakness_tags=req.weakness_tags,
+        )
 
     @router.post("/session/finalize")
     def finalize(req: FinalizeRequest, sub: str | None = Depends(current_sub)) -> MemoryProfile:

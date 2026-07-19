@@ -359,3 +359,38 @@ def test_sessions_list_empty_when_none():
     res = client.get("/api/sessions")
     assert res.status_code == 200
     assert res.json() == []
+
+
+# --- coach (model answer) --------------------------------------------------
+
+_COACH_PAYLOAD = {
+    "modelAnswer": "When our service had duplicate alerts, I owned it. I added Redis "
+                   "idempotency and cut duplicates from 4% to 0.3% in a month.",
+    "improvements": ["Imposed STAR structure.", "Added a measurable 4%->0.3% impact."],
+}
+
+
+def test_coach_returns_model_answer_and_improvements():
+    client = _client({"CoachResponse": _COACH_PAYLOAD})
+    res = client.post(
+        "/api/coach",
+        json={
+            "question": _QUESTION_BODY,
+            "transcript": "Q: Tell me...\nA: It got better.",
+            "weaknessTags": ["vague-impact", "no-star-structure"],
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert "0.3%" in body["modelAnswer"]
+    assert len(body["improvements"]) == 2
+
+
+def test_coach_works_without_weakness_tags():
+    client = _client({"CoachResponse": _COACH_PAYLOAD})
+    res = client.post(
+        "/api/coach",
+        json={"question": _QUESTION_BODY, "transcript": "Some answer."},
+    )
+    assert res.status_code == 200
+    assert res.json()["modelAnswer"]

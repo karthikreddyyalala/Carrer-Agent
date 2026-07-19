@@ -46,6 +46,12 @@ class AnswerEvaluation(_Base):
     survival_reasoning: str
 
 
+class CoachResponse(_Base):
+    """A model answer that reworks the candidate's own attempt into a 5/5 response."""
+    model_answer: str
+    improvements: list[str]  # 2-3 short "what changed / why this works" notes
+
+
 class RecurringWeakness(_Base):
     tag: str
     frequency: int

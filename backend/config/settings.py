@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     interviewer_model: str = sonnet_model
     evaluator_model: str = sonnet_model
     memory_model: str = haiku_model
+    coach_model: str = sonnet_model
 
     # Persistence. "memory" keeps everything in-process (tests, local dev with
     # no AWS tables). "dynamodb" persists MemoryProfile across sessions/devices.
