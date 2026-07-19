@@ -20,6 +20,17 @@ KEY="crucible-api.zip"
 CONCURRENCY="${CRUCIBLE_CONCURRENCY:-5}"
 CORS_ORIGINS="${CRUCIBLE_CORS_ORIGINS:-*}"
 
+# Build the Lambda env var string. Tavus is optional: set CRUCIBLE_TAVUS_API_KEY
+# and CRUCIBLE_TAVUS_REPLICA_ID (and optionally _PERSONA_ID) in your OWN shell to
+# turn on the video avatar. Never commit these — pass them at deploy time only.
+ENV_VARS="INTERVIEWAI_PERSISTENCE=dynamodb,INTERVIEWAI_CORS_ORIGINS=${CORS_ORIGINS}"
+if [ -n "${CRUCIBLE_TAVUS_API_KEY:-}" ]; then
+  ENV_VARS="${ENV_VARS},INTERVIEWAI_TAVUS_API_KEY=${CRUCIBLE_TAVUS_API_KEY}"
+  ENV_VARS="${ENV_VARS},INTERVIEWAI_TAVUS_REPLICA_ID=${CRUCIBLE_TAVUS_REPLICA_ID:-}"
+  ENV_VARS="${ENV_VARS},INTERVIEWAI_TAVUS_PERSONA_ID=${CRUCIBLE_TAVUS_PERSONA_ID:-}"
+  echo "==> Tavus avatar: ENABLED (key provided)"
+fi
+
 [ -f "$ZIP" ] || { echo "Missing $ZIP — run deploy/build-lambda.sh first"; exit 1; }
 
 echo "==> Artifact bucket"
@@ -35,14 +46,14 @@ if aws lambda get-function --function-name "$FN" --region "$REGION" >/dev/null 2
     --s3-bucket "$BUCKET" --s3-key "$KEY" >/dev/null
   aws lambda wait function-updated --function-name "$FN" --region "$REGION"
   aws lambda update-function-configuration --function-name "$FN" --region "$REGION" \
-    --environment "Variables={INTERVIEWAI_PERSISTENCE=dynamodb,INTERVIEWAI_CORS_ORIGINS=${CORS_ORIGINS}}" >/dev/null
+    --environment "Variables={${ENV_VARS}}" >/dev/null
 else
   echo "==> Creating function"
   aws lambda create-function --function-name "$FN" --region "$REGION" \
     --runtime python3.12 --handler lambda_handler.handler \
     --role "$ROLE_ARN" --timeout 60 --memory-size 1024 \
     --code "S3Bucket=${BUCKET},S3Key=${KEY}" \
-    --environment "Variables={INTERVIEWAI_PERSISTENCE=dynamodb,INTERVIEWAI_CORS_ORIGINS=${CORS_ORIGINS}}" >/dev/null
+    --environment "Variables={${ENV_VARS}}" >/dev/null
   aws lambda wait function-active --function-name "$FN" --region "$REGION"
 fi
 
