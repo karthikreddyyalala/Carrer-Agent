@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "motion/react";
-import { ArrowRight, Sparkle, Brain, UploadSimple } from "@phosphor-icons/react";
+import { ArrowRight, Sparkle, Brain, UploadSimple, VideoCamera } from "@phosphor-icons/react";
 import { TopBar } from "@/components/TopBar";
 import { MagneticButton } from "@/components/MagneticButton";
 import { useSessionStore } from "@/stores/sessionStore";
@@ -39,9 +39,11 @@ export function Setup() {
   const priorMemory = useSessionStore((s) => s.priorMemory);
   const loadMemory = useSessionStore((s) => s.loadMemory);
 
+  const [name, setName] = useState("");
   const [role, setRole] = useState("sde");
   const [mode, setMode] = useState<InterviewMode>("full");
   const [level, setLevel] = useState<InterviewLevel>("mid");
+  const [useVideo, setUseVideo] = useState(false);
   const [resume, setResume] = useState("");
   const [jd, setJd] = useState("");
   const [startError, setStartError] = useState("");
@@ -57,7 +59,7 @@ export function Setup() {
   const handleStart = async () => {
     setStartError("");
     try {
-      await start({ resumeText: resume, jdText: jd, role, mode, level });
+      await start({ resumeText: resume, jdText: jd, role, mode, level, candidateName: name, useVideo });
       navigate("/interview");
     } catch (e) {
       setStartError(
@@ -104,8 +106,21 @@ export function Setup() {
             </motion.div>
           )}
 
-          {/* role */}
+          {/* name */}
           <div className="mt-9">
+            <label className="mb-2.5 block font-mono text-[11px] tracking-[0.16em] text-fog">
+              YOUR NAME
+            </label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="What should the interviewer call you?"
+              className="w-full rounded-xl border border-line bg-ink px-4 py-3 text-[15px] text-chalk placeholder:text-fog focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/40"
+            />
+          </div>
+
+          {/* role */}
+          <div className="mt-7">
             <label className="mb-2.5 block font-mono text-[11px] tracking-[0.16em] text-fog">
               TARGET ROLE
             </label>
@@ -190,6 +205,51 @@ export function Setup() {
             <p className="mt-2 text-xs text-fog">
               Controls difficulty and how much each question asks — Junior is smaller and guided.
             </p>
+          </div>
+
+          {/* video interview opt-in */}
+          <div className="mt-7">
+            <label className="mb-2.5 block font-mono text-[11px] tracking-[0.16em] text-fog">
+              FORMAT
+            </label>
+            <button
+              onClick={() => setUseVideo((v) => !v)}
+              className={`flex w-full items-center justify-between rounded-2xl border p-4 text-left tactile transition-colors ${
+                useVideo ? "border-accent bg-accent/10" : "border-line bg-ink hover:border-line-bright"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <VideoCamera
+                  size={22}
+                  weight={useVideo ? "fill" : "regular"}
+                  className={useVideo ? "text-accent" : "text-fog"}
+                />
+                <div>
+                  <span
+                    className={`font-display text-[15px] font-semibold tracking-tight ${
+                      useVideo ? "text-chalk" : "text-mist"
+                    }`}
+                  >
+                    Live video interviewer
+                  </span>
+                  <span className="mt-0.5 block text-xs text-fog">
+                    A real face greets you and asks the questions on camera. Otherwise: voice + a
+                    stylized avatar.
+                  </span>
+                </div>
+              </div>
+              <span
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                  useVideo ? "bg-accent" : "bg-surface-2"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white-pure transition-transform ${
+                    useVideo ? "translate-x-[22px]" : "translate-x-0.5"
+                  }`}
+                />
+              </span>
+            </button>
           </div>
 
           {/* resume */}

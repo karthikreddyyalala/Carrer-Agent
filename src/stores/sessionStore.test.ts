@@ -229,4 +229,48 @@ describe("sessionStore — turnError", () => {
       expect(useSessionStore.getState().status).toBe("live");
     });
   });
+
+  describe("warm-up exchange", () => {
+    function seedWarmup() {
+      useSessionStore.setState({
+        status: "live",
+        warmup: true,
+        mode: "full",
+        level: "mid",
+        plan: MOCK_PLAN,
+        currentIdx: 0,
+        followUpCount: 0,
+        messages: [
+          { id: "g", speaker: "interviewer", kind: "question", text: "Hi Karthik, how are you?", questionId: "intro" },
+        ],
+        evaluations: [],
+        turnError: null,
+      });
+    }
+
+    it("treats the small-talk reply as unscored and moves into Q1", async () => {
+      seedWarmup();
+      const { api } = await import("@/lib/api");
+
+      await useSessionStore.getState().submitAnswer("I'm doing great, thanks!");
+
+      const s = useSessionStore.getState();
+      expect(s.warmup).toBe(false);
+      expect(s.evaluations).toHaveLength(0); // never scored
+      expect(api.submitAnswer).not.toHaveBeenCalled(); // no pipeline call
+      // the last message is the first real question
+      const last = s.messages[s.messages.length - 1];
+      expect(last.speaker).toBe("interviewer");
+      expect(last.questionId).toBe("q1");
+      expect(last.text).toContain(MOCK_PLAN.questions[0].prompt);
+    });
+
+    it("records the candidate's small-talk under the intro, not a question", async () => {
+      seedWarmup();
+      await useSessionStore.getState().submitAnswer("Good!");
+      const candidateMsgs = useSessionStore.getState().messages.filter((m) => m.speaker === "candidate");
+      expect(candidateMsgs).toHaveLength(1);
+      expect(candidateMsgs[0].questionId).toBe("intro");
+    });
+  });
 });

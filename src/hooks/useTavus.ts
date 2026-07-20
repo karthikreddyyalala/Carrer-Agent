@@ -88,6 +88,10 @@ export function useTavus() {
   }, []);
 
   const deactivate = useCallback(async () => {
+    // End the billed Tavus conversation first so we don't leak minutes.
+    if (conversationIdRef.current) {
+      void api.endAvatarSession(conversationIdRef.current);
+    }
     const call = callRef.current;
     if (call) {
       try {

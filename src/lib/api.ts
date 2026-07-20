@@ -206,6 +206,21 @@ export const api = {
     return res.json();
   },
 
+  // Best-effort: ends the billed Tavus conversation. Fire-and-forget on exit.
+  async endAvatarSession(conversationId: string): Promise<void> {
+    if (USE_MOCK) return;
+    try {
+      await fetch(apiUrl("/api/avatar/end"), {
+        method: "POST",
+        headers: await authHeaders(),
+        body: JSON.stringify({ conversationId }),
+        keepalive: true,
+      });
+    } catch {
+      /* cleanup is best-effort */
+    }
+  },
+
   async finalizeSession(input: {
     candidateId: string;
     evaluations: AnswerEvaluation[];

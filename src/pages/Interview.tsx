@@ -32,6 +32,7 @@ export function Interview() {
   const currentIdx = useSessionStore((s) => s.currentIdx);
   const followUpCount = useSessionStore((s) => s.followUpCount);
   const submitAnswer = useSessionStore((s) => s.submitAnswer);
+  const useVideo = useSessionStore((s) => s.useVideo);
   const justRestored = useSessionStore((s) => s.justRestored);
   const clearRestored = useSessionStore((s) => s.clearRestored);
   const turnError = useSessionStore((s) => s.turnError);
@@ -63,17 +64,45 @@ export function Interview() {
   const [callOpen, setCallOpen] = useState(false);
   const lastSpokenId = useRef<string | null>(null);
 
+  // Video mode: connect the avatar at session start so it greets on camera.
+  // On leaving the page, always tear down the (billed) Tavus conversation.
+  useEffect(() => {
+    if (useVideo) {
+      setVoiceOn(true);
+      tavus.activate();
+    }
+    return () => {
+      tavus.deactivate();
+    };
+    // once, on entry
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // In video mode, present it as a call: open the stage once the avatar is live.
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (useVideo && tavus.ready && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
+      setCallOpen(true);
+    }
+  }, [useVideo, tavus.ready]);
+
   // Speak each new interviewer message aloud when voice is on. The video avatar
   // wins when it's live; otherwise the stylized avatar + Kokoro/Web Speech does.
   useEffect(() => {
     if (!voiceOn) return;
     const last = messages[messages.length - 1];
     if (!last || last.speaker !== "interviewer") return;
+    // In video mode, wait for the avatar to connect so IT delivers the greeting
+    // (don't let Kokoro jump in first). But if it's still connecting only —
+    // once it errors or isn't configured, fall through to Kokoro immediately.
+    const connecting = tavus.status === "idle" || tavus.status === "connecting";
+    if (useVideo && !tavus.ready && connecting) return;
     if (lastSpokenId.current === last.id) return;
     lastSpokenId.current = last.id;
     if (tavus.ready) tavus.speak(last.text);
     else if (tts.supported) tts.speak(last.text);
-  }, [messages, voiceOn, tts, tavus]);
+  }, [messages, voiceOn, tts, tavus, useVideo]);
 
   // While dictating, mirror the live transcript into the draft.
   useEffect(() => {
@@ -404,6 +433,29 @@ export function Interview() {
           </p>
         </div>
       </div>
+
+      <AnimatePresence>
+        {useVideo && !tavus.ready && (tavus.status === "idle" || tavus.status === "connecting") && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] grid place-items-center bg-void/95 backdrop-blur-xl"
+          >
+            <div className="flex flex-col items-center gap-5 text-center">
+              <span className="inline-block h-9 w-9 animate-spin rounded-full border-2 border-line-bright border-t-accent" />
+              <div>
+                <p className="font-display text-lg font-semibold tracking-tight text-chalk">
+                  Connecting you to your interviewer…
+                </p>
+                <p className="mt-1 font-mono text-[11px] tracking-wide text-fog">
+                  SETTING UP THE VIDEO ROOM
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {callOpen && tavus.ready && (

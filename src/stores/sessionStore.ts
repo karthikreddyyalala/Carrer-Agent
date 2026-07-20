@@ -32,6 +32,11 @@ interface SessionState {
   role: string;
   mode: InterviewMode;
   level: InterviewLevel;
+  candidateName: string;
+  useVideo: boolean;
+  // True during the opening small-talk exchange (before Q1). Warm-up answers
+  // are acknowledged, never scored.
+  warmup: boolean;
   profile: IntakeProfile | null;
   plan: QuestionPlan | null;
   currentIdx: number;
@@ -50,6 +55,8 @@ interface SessionState {
     role: string;
     mode: InterviewMode;
     level: InterviewLevel;
+    candidateName: string;
+    useVideo: boolean;
   }) => Promise<void>;
   submitAnswer: (text: string) => Promise<void>;
   clearRestored: () => void;
@@ -58,25 +65,32 @@ interface SessionState {
 }
 
 const TRANSITIONS = [
-  "Okay. Moving on.",
-  "Got it — let me shift gears.",
-  "Understood. Next question:",
-  "Makes sense. Let's keep going.",
-  "Right. Next one:",
+  "Got it, thanks.",
+  "Okay, that's helpful.",
+  "Makes sense.",
+  "Alright, appreciate that.",
+  "Good — let me shift gears.",
 ];
 
 function pickTransition(): string {
   return TRANSITIONS[Math.floor(Math.random() * TRANSITIONS.length)];
 }
 
-function greetingText(mode: InterviewMode, level: InterviewLevel, count: number): string {
+// First thing the interviewer says — warm, by name, opening the small talk.
+function warmGreeting(name: string): string {
+  const who = name.trim() ? ` ${name.trim().split(/\s+/)[0]}` : "";
+  return `Hi${who}, good to meet you — thanks for making the time. Before we dive in, how are you doing today?`;
+}
+
+// Said after the candidate's small-talk reply, then straight into Q1.
+function warmIntro(mode: InterviewMode, level: InterviewLevel): string {
   const modeDesc: Record<InterviewMode, string> = {
-    full: `a mix of ${count} behavioral, technical, and system design`,
-    behavioral: `${count} behavioral`,
-    technical: `${count} technical`,
-    system_design: `${count} system design`,
+    full: `a few questions across behavioral, technical, and system design`,
+    behavioral: `a few behavioral questions`,
+    technical: `a few technical questions`,
+    system_design: `a couple of system design questions`,
   };
-  return `Hi — good to have you here. We'll work through ${modeDesc[mode]} questions at the ${level} level. I'll push back if an answer needs more depth — that's intentional, not a penalty. Let's start.`;
+  return `Glad to hear it. So today I'll take you through ${modeDesc[mode]} — pitched at the ${level} level. Just talk me through your thinking out loud, and I'll follow up where I'm curious. Let's start with the first one.`;
 }
 
 // UUID message ids so rehydrating a saved session never collides with new
@@ -101,6 +115,9 @@ export const useSessionStore = create<SessionState>()(
       role: "sde",
       mode: "full",
       level: "mid",
+      candidateName: "",
+      useVideo: false,
+      warmup: false,
       profile: null,
       plan: null,
       currentIdx: 0,
@@ -117,8 +134,11 @@ export const useSessionStore = create<SessionState>()(
         set({ priorMemory: hasMemory(memory) ? memory : null });
       },
 
-      start: async ({ resumeText, jdText, role, mode, level }) => {
-        set({ status: "starting", role, mode, level, messages: [], evaluations: [], updatedMemory: null });
+      start: async ({ resumeText, jdText, role, mode, level, candidateName, useVideo }) => {
+        set({
+          status: "starting", role, mode, level, candidateName, useVideo,
+          warmup: false, messages: [], evaluations: [], updatedMemory: null,
+        });
         try {
         const candidateId = getCandidateId();
         const prior = await api.getMemory(candidateId);
@@ -130,7 +150,8 @@ export const useSessionStore = create<SessionState>()(
           mode,
           level,
         });
-        const first = plan.questions[0];
+        // Open with the warm greeting only — the first question comes after the
+        // candidate's small-talk reply (handled in submitAnswer while warmup).
         set({
           status: "live",
           profile,
@@ -139,21 +160,14 @@ export const useSessionStore = create<SessionState>()(
           currentIdx: 0,
           followUpCount: 0,
           justRestored: false,
+          warmup: true,
           messages: [
             {
               id: mkId(),
               speaker: "interviewer",
               kind: "question",
-              text: greetingText(mode, level, plan.questions.length),
+              text: warmGreeting(candidateName),
               questionId: "intro",
-            },
-            {
-              id: mkId(),
-              speaker: "interviewer",
-              kind: "question",
-              text: first.prompt,
-              questionId: first.id,
-              weighted: first.weightedFromWeakness,
             },
           ],
         });
@@ -167,6 +181,28 @@ export const useSessionStore = create<SessionState>()(
         const state = get();
         const question = currentQuestion(state.plan, state.currentIdx);
         if (!question || state.status !== "live") return;
+
+        // Warm-up exchange: the candidate's reply to "how are you doing?" is
+        // small talk — acknowledge it and move into Q1, never score it.
+        if (state.warmup) {
+          const first = state.plan!.questions[0];
+          set((s) => ({
+            warmup: false,
+            messages: [
+              ...s.messages,
+              { id: mkId(), speaker: "candidate", kind: "answer", text, questionId: "intro" },
+              {
+                id: mkId(),
+                speaker: "interviewer",
+                kind: "question",
+                text: `${warmIntro(state.mode, state.level)}\n\n${first.prompt}`,
+                questionId: first.id,
+                weighted: first.weightedFromWeakness,
+              },
+            ],
+          }));
+          return;
+        }
 
         set({
           status: "thinking",
@@ -284,6 +320,7 @@ export const useSessionStore = create<SessionState>()(
           plan: null,
           currentIdx: 0,
           followUpCount: 0,
+          warmup: false,
           messages: [],
           evaluations: [],
           updatedMemory: null,
@@ -306,6 +343,9 @@ export const useSessionStore = create<SessionState>()(
         role: s.role,
         mode: s.mode,
         level: s.level,
+        candidateName: s.candidateName,
+        useVideo: s.useVideo,
+        warmup: s.warmup,
         profile: s.profile,
         plan: s.plan,
         currentIdx: s.currentIdx,
