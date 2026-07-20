@@ -59,3 +59,12 @@ class TavusClient:
             conversation_id=data["conversation_id"],
             conversation_url=data["conversation_url"],
         )
+
+    def end_conversation(self, conversation_id: str) -> None:
+        # Ending the conversation stops the billed video session. Best-effort:
+        # callers swallow failures so cleanup never breaks the user's exit.
+        self._http_post(
+            f"{self._base_url}/v2/conversations/{conversation_id}/end",
+            {"x-api-key": self._api_key},
+            {},
+        )

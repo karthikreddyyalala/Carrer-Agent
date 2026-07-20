@@ -76,6 +76,10 @@ class CoachRequest(_Base):
     weakness_tags: list[str] = []
 
 
+class AvatarEndRequest(_Base):
+    conversation_id: str
+
+
 def _empty_memory(candidate_id: str) -> MemoryProfile:
     return MemoryProfile(
         candidate_id=candidate_id,
@@ -170,6 +174,17 @@ def build_session_router(*, llm, settings: Settings, store: MemoryStore, tavus_c
             conversation_url=result.conversation_url,
             conversation_id=result.conversation_id,
         )
+
+    @router.post("/avatar/end")
+    def avatar_end(req: AvatarEndRequest, _sub: str | None = Depends(current_sub)) -> dict:
+        # Best-effort: ends the billed Tavus session when the candidate leaves.
+        if tavus_client is None:
+            return {"ended": False}
+        try:
+            tavus_client.end_conversation(req.conversation_id)
+        except Exception:  # noqa: BLE001 — cleanup must never break exit
+            return {"ended": False}
+        return {"ended": True}
 
     @router.post("/session/finalize")
     def finalize(req: FinalizeRequest, sub: str | None = Depends(current_sub)) -> MemoryProfile:

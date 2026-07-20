@@ -430,3 +430,31 @@ def test_avatar_session_returns_url_when_enabled():
     body = res.json()
     assert body["enabled"] is True
     assert body["conversationUrl"] == "https://tavus.daily.co/room-abc"
+
+
+class _FakeTavusEnd(_FakeTavus):
+    def __init__(self):
+        super().__init__()
+        self.ended = []
+
+    def end_conversation(self, conversation_id):
+        self.ended.append(conversation_id)
+
+
+def test_avatar_end_calls_tavus_when_enabled():
+    from config.settings import Settings
+    settings = Settings(tavus_api_key="k", tavus_replica_id="r")
+    fake = _FakeTavusEnd()
+    app = create_app(llm=_FakeLLM({}), store=InMemoryStore(), settings=settings, tavus_client=fake)
+    client = TestClient(app)
+    res = client.post("/api/avatar/end", json={"conversationId": "conv-123"})
+    assert res.status_code == 200
+    assert res.json()["ended"] is True
+    assert fake.ended == ["conv-123"]
+
+
+def test_avatar_end_noop_when_disabled():
+    client = _client({})
+    res = client.post("/api/avatar/end", json={"conversationId": "conv-123"})
+    assert res.status_code == 200
+    assert res.json()["ended"] is False
